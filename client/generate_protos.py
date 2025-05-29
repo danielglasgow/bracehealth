@@ -11,10 +11,10 @@ def generate_protos():
         "python",
         "-m",
         "grpc_tools.protoc",
-        "-I../billing/src/main/proto",
+        "-I../shared/proto",
         "--python_out=../generated",
         "--grpc_python_out=../generated",
-        "../billing/src/main/proto/billing.proto",
+        "../shared/proto/billing.proto",
     ]
     subprocess.run(cmd, check=True)
 

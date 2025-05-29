@@ -1,11 +1,17 @@
 syntax = "proto3";
 
-package com.bracehealth.billing;
+package com.bracehealth.shared;
 
 option java_multiple_files = true;
-option java_package = "com.bracehealth.billing";
+option java_package = "com.bracehealth.shared";
 
 service BillingService {
+  rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
+  rpc receiveRemittance(ReceiveRemittanceRequest) returns (ReceiveRemittanceResponse);
+}
+
+service ClearingHouseService {
+  // In theory this should have it's own request type that tells the clearinghouse who to callback to on completion
   rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
 }
 
@@ -16,6 +22,14 @@ message RemittanceResponse {
   double copay_amount = 4;
   double deductible_amount = 5;
   double not_allowed_amount = 6;
+}
+
+message ReceiveRemittanceRequest {
+  RemittanceResponse remittance = 1;
+}
+
+message ReceiveRemittanceResponse {
+  bool success = 1;
 }
 
 message SubmitClaimRequest {
@@ -100,5 +114,4 @@ enum Gender {
   GENDER_UNSPECIFIED        = 0;
   M                         = 1;
   F                         = 2;
-}
-
+} 

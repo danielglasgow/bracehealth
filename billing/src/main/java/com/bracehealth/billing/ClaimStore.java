@@ -3,6 +3,8 @@ package com.bracehealth.billing;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import com.bracehealth.shared.RemittanceResponse;
+import com.bracehealth.shared.PayerClaim;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import java.util.Optional;
