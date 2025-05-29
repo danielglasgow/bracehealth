@@ -45,3 +45,7 @@ deactivate
 ```bash
 pip freeze > requirements.txt
 ```
+
+## Test
+
+pytest test_main.py -v
