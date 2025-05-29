@@ -2,42 +2,36 @@ package com.bracehealth.billing;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-
 import com.bracehealth.shared.RemittanceResponse;
 import com.bracehealth.shared.PayerClaim;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import java.util.Optional;
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * Stores (in memory) claims that have been submitted.
  * 
+ * On application shutdown, the claims are persisted to disk
  */
 public class ClaimStore {
 
-    // Note, singleton is not great / should be done with DI framework
-    private static ClaimStore INSTANCE = null;
-
     private final ConcurrentMap<String, Claim> claims;
 
-    private record ClearingHouseResponse(RemittanceResponse remittanceResponse, Instant receivedAt) {
+    record ClearingHouseResponse(RemittanceResponse remittanceResponse, Instant receivedAt) {
     }
 
-    private record Claim(PayerClaim claim, ClaimStatus status, Optional<ClearingHouseResponse> clearingHouseResponse) {
+    record Claim(PayerClaim claim, ClaimStatus status, Optional<ClearingHouseResponse> clearingHouseResponse) {
+    }
+
+    public ClaimStore() {
+        this.claims = new ConcurrentHashMap<>();
     }
 
     @VisibleForTesting
-    ClaimStore(ImmutableMap<String, Claim> claims) {
+    ClaimStore(Map<String, Claim> claims) {
         this.claims = new ConcurrentHashMap<>(claims);
-    }
-
-    public static ClaimStore getInstance() {
-        if (INSTANCE == null) {
-            // TODO: Read in claims from DB
-            INSTANCE = new ClaimStore(ImmutableMap.of());
-        }
-        return INSTANCE;
     }
 
     public void addClaim(PayerClaim claim) {
@@ -54,7 +48,11 @@ public class ClaimStore {
         });
     }
 
-    public enum ClaimStatus {
+    public Map<String, Claim> getData() {
+        return ImmutableMap.copyOf(claims);
+    }
+
+    enum ClaimStatus {
         PENDING,
         RESPONSE_RECEIVED,
     }

@@ -5,10 +5,17 @@ import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @GrpcService
 public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(BillingServiceImpl.class);
+    private final ClaimStore claimStore;
+
+    @Autowired
+    public BillingServiceImpl(ClaimStore claimStore) {
+        this.claimStore = claimStore;
+    }
 
     @Override
     public void submitClaim(SubmitClaimRequest request, StreamObserver<SubmitClaimResponse> responseObserver) {
@@ -16,8 +23,8 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
             PayerClaim claim = request.getClaim();
             logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
 
-            // TODO: Implement actual claim submission logic here
-            // For now, we'll just return success
+            claimStore.addClaim(claim);
+
             SubmitClaimResponse response = SubmitClaimResponse.newBuilder()
                     .setSuccess(true)
                     .build();
@@ -39,7 +46,8 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                     remittance.getClaimId(),
                     remittance.getPayerPaidAmount());
 
-            // TODO: Implement actual remittance processing logic here
+            claimStore.addResponse(remittance.getClaimId(), remittance);
+
             ReceiveRemittanceResponse response = ReceiveRemittanceResponse.newBuilder()
                     .setSuccess(true)
                     .build();
