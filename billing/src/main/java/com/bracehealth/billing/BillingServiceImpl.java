@@ -1,11 +1,15 @@
 package com.bracehealth.billing;
 
 import com.bracehealth.shared.*;
+import com.google.common.collect.ImmutableList;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @GrpcService
 public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBase {
@@ -18,16 +22,16 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
     }
 
     @Override
-    public void submitClaim(SubmitClaimRequest request, StreamObserver<SubmitClaimResponse> responseObserver) {
+    public void submitClaim(SubmitClaimRequest request,
+            StreamObserver<SubmitClaimResponse> responseObserver) {
         try {
             PayerClaim claim = request.getClaim();
             logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
 
             claimStore.addClaim(claim);
 
-            SubmitClaimResponse response = SubmitClaimResponse.newBuilder()
-                    .setSuccess(true)
-                    .build();
+            SubmitClaimResponse response =
+                    SubmitClaimResponse.newBuilder().setSuccess(true).build();
 
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -43,14 +47,12 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
         try {
             RemittanceResponse remittance = request.getRemittance();
             logger.info("Received remittance for claim ID: {}, paid amount: {}",
-                    remittance.getClaimId(),
-                    remittance.getPayerPaidAmount());
+                    remittance.getClaimId(), remittance.getPayerPaidAmount());
 
             claimStore.addResponse(remittance.getClaimId(), remittance);
 
-            ReceiveRemittanceResponse response = ReceiveRemittanceResponse.newBuilder()
-                    .setSuccess(true)
-                    .build();
+            ReceiveRemittanceResponse response =
+                    ReceiveRemittanceResponse.newBuilder().setSuccess(true).build();
 
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -58,5 +60,72 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
             logger.error("Error processing remittance", e);
             responseObserver.onError(e);
         }
+    }
+
+    @Override
+    public void getAccountsReceivable(GetAccountsReceivableRequest request,
+            StreamObserver<GetAccountsReceivableResponse> responseObserver) {
+        // TODO: Add verification that buckets are non-overlapping
+        try {
+            logger.info("Received accounts receivable request with {} buckets",
+                    request.getBucketCount());
+
+            // TODO: This should really be cached, similarly, we should not look at completed claims
+            Map<PayerId, List<ClaimStore.Claim>> claimsByPayer =
+                    claimStore.getPendingClaims().values().stream().collect(Collectors
+                            .groupingBy(claim -> claim.claim().getInsurance().getPayerId()));
+
+            // Create response builder
+            GetAccountsReceivableResponse.Builder responseBuilder =
+                    GetAccountsReceivableResponse.newBuilder();
+
+            ImmutableList<PayerId> targetPayer = request.getPayerFilterList().size() == 0
+                    ? ImmutableList.copyOf(claimsByPayer.keySet())
+                    : ImmutableList.copyOf(request.getPayerFilterList());
+
+            for (PayerId payerId : targetPayer) {
+                responseBuilder.addRow(
+                        createRow(payerId, claimsByPayer.get(payerId), request.getBucketList()));
+
+            }
+
+            responseObserver.onNext(responseBuilder.build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            logger.error("Error processing accounts receivable request", e);
+            responseObserver.onError(e);
+        }
+    }
+
+    private AccountsReceivableRow createRow(PayerId payerId, List<ClaimStore.Claim> claims,
+            List<AccountsReceivableBucket> buckets) {
+        return AccountsReceivableRow.newBuilder().setPayerId(payerId.name())
+                .setPayerName(payerId.name())
+                .addAllBucketValue(buckets.stream()
+                        .map(bucket -> AccountsReceivableBucketValue.newBuilder().setBucket(bucket)
+                                .setAmount(calculateBucketAmount(claims, bucket)).build())
+                        .collect(Collectors.toList()))
+                .build();
+    }
+
+    private double calculateBucketAmount(List<ClaimStore.Claim> claims,
+            AccountsReceivableBucket bucket) {
+        Instant now = Instant.now();
+        Instant startTime = bucket.getStartMinutesAgo() > 0
+                ? now.minusSeconds(bucket.getStartMinutesAgo() * 60L)
+                : Instant.EPOCH;
+        Instant endTime = now.minusSeconds(bucket.getEndMinutesAgo() * 60L);
+
+        return claims.stream().filter(claim -> claim.submittedAt().isAfter(startTime)
+                && claim.submittedAt().isBefore(endTime)).mapToDouble(claim -> {
+                    double totalAmount = claim.claim().getServiceLinesList().stream()
+                            .filter(sl -> !sl.getDoNotBill())
+                            // Again, just assuming Dollars
+                            .mapToDouble(sl -> sl.getUnitChargeAmount() * sl.getUnits()).sum();
+                    if (totalAmount < 0) {
+                        throw new IllegalArgumentException("Total amount is negative");
+                    }
+                    return totalAmount;
+                }).sum();
     }
 }

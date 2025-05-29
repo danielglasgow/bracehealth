@@ -16,7 +16,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.Base64;
 import java.nio.file.Files;
 import com.google.common.collect.ImmutableMap;
-
 import java.util.stream.Collectors;
 
 /**
@@ -33,12 +32,7 @@ public class ClaimStore {
     private final Path storagePath;
     private final ConcurrentMap<String, Claim> claims;
 
-    record ClearingHouseResponse(RemittanceResponse remittanceResponse, Instant receivedAt) {
-    }
 
-    record Claim(PayerClaim claim, ClaimStatus status,
-            Optional<ClearingHouseResponse> clearingHouseResponse) {
-    }
 
     public ClaimStore(Path storagePath, Map<String, Claim> claims) {
         this.storagePath = storagePath;
@@ -46,7 +40,8 @@ public class ClaimStore {
     }
 
     public void addClaim(PayerClaim claim) {
-        claims.put(claim.getClaimId(), new Claim(claim, ClaimStatus.PENDING, Optional.empty()));
+        claims.put(claim.getClaimId(),
+                new Claim(claim, Instant.now(), ClaimStatus.PENDING, Optional.empty()));
     }
 
     public void addResponse(String claimId, RemittanceResponse remittanceResponse) {
@@ -54,8 +49,10 @@ public class ClaimStore {
             throw new IllegalArgumentException("Claim not found");
         }
         claims.computeIfPresent(claimId, (id, claim) -> {
-            return new Claim(claim.claim(), ClaimStatus.RESPONSE_RECEIVED,
-                    Optional.of(new ClearingHouseResponse(remittanceResponse, Instant.now())));
+            var clearingHouseResponse =
+                    new ClearingHouseResponse(remittanceResponse, Instant.now());
+            return claim.updateResponse(clearingHouseResponse)
+                    .updateStatus(ClaimStatus.RESPONSE_RECEIVED);
         });
     }
 
@@ -63,20 +60,18 @@ public class ClaimStore {
         return ImmutableMap.copyOf(claims);
     }
 
+    public ImmutableMap<String, Claim> getPendingClaims() {
+        // TODO: This should really be cached / updated as we go
+        return ImmutableMap.copyOf(
+                claims.entrySet().stream().filter(e -> e.getValue().status() == ClaimStatus.PENDING)
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+    }
+
     public void writeToDisk() {
         try {
-            Map<String, JsonClaim> jsonClaims = claims.entrySet().stream()
-                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey,
-                            e -> new JsonClaim(
-                                    Base64.getEncoder()
-                                            .encodeToString(e.getValue().claim().toByteArray()),
-                                    e.getValue().status().name(),
-                                    e.getValue().clearingHouseResponse()
-                                            .map(r -> new JsonResponse(
-                                                    Base64.getEncoder().encodeToString(
-                                                            r.remittanceResponse().toByteArray()),
-                                                    r.receivedAt().toString()))
-                                            .orElse(null))));
+            ImmutableMap<String, JsonClaim> jsonClaims =
+                    ImmutableMap.copyOf(claims.entrySet().stream().collect(Collectors
+                            .toMap(Map.Entry::getKey, entry -> entry.getValue().toJsonClaim())));
             objectMapper.writeValue(storagePath.toFile(), jsonClaims);
             logger.info("Successfully persisted claims to disk");
         } catch (IOException e) {
@@ -87,19 +82,13 @@ public class ClaimStore {
     public static ClaimStore newInstanceFromDisk(Path storagePath) {
         try {
             if (Files.exists(storagePath)) {
-                Map<String, JsonClaim> jsonClaims =
-                        objectMapper.readValue(storagePath.toFile(), objectMapper.getTypeFactory()
-                                .constructMapType(Map.class, String.class, JsonClaim.class));
-
-                Map<String, ClaimStore.Claim> claims = jsonClaims.entrySet().stream()
-                        .collect(Collectors.toMap(Map.Entry::getKey, e -> new ClaimStore.Claim(
-                                parsePayerClaim(e.getValue().paymentClaim()),
-                                ClaimStore.ClaimStatus.valueOf(e.getValue().status()),
-                                Optional.ofNullable(e.getValue().clearingHouseResponse())
-                                        .map(r -> new ClaimStore.ClearingHouseResponse(
-                                                parseRemittanceResponse(r.remittanceResponse()),
-                                                Instant.parse(r.receivedAt()))))));
-
+                ImmutableMap<String, JsonClaim> jsonClaims =
+                        objectMapper.readValue(storagePath.toFile(),
+                                objectMapper.getTypeFactory().constructMapType(ImmutableMap.class,
+                                        String.class, JsonClaim.class));
+                ImmutableMap<String, Claim> claims = ImmutableMap.copyOf(
+                        jsonClaims.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
+                                entry -> Claim.fromJsonClaim(entry.getValue()))));
                 return new ClaimStore(storagePath, claims);
             }
         } catch (IOException e) {
@@ -108,6 +97,57 @@ public class ClaimStore {
         return new ClaimStore(storagePath, ImmutableMap.of());
 
     }
+
+    record ClearingHouseResponse(RemittanceResponse remittanceResponse, Instant receivedAt) {
+        private static ClearingHouseResponse fromJsonResponse(JsonResponse jsonResponse) {
+            return new ClearingHouseResponse(
+                    parseRemittanceResponse(jsonResponse.remittanceResponse()),
+                    Instant.parse(jsonResponse.receivedAt()));
+        }
+
+        private JsonResponse toJsonResponse() {
+            return new JsonResponse(
+                    Base64.getEncoder().encodeToString(remittanceResponse().toByteArray()),
+                    receivedAt().toString());
+        }
+    }
+
+    record Claim(PayerClaim claim, Instant submittedAt, ClaimStatus status,
+            Optional<ClearingHouseResponse> clearingHouseResponse) {
+
+        private Claim updateResponse(ClearingHouseResponse clearingHouseResponse) {
+            return new Claim(claim(), submittedAt(), status(), Optional.of(clearingHouseResponse));
+        }
+
+        private Claim updateStatus(ClaimStatus status) {
+            return new Claim(claim(), submittedAt(), status, clearingHouseResponse());
+        }
+
+        private JsonClaim toJsonClaim() {
+            return new JsonClaim(Base64.getEncoder().encodeToString(claim().toByteArray()),
+                    submittedAt().toString(), status().name(), clearingHouseResponse()
+                            .map(ClearingHouseResponse::toJsonResponse).orElse(null));
+        }
+
+        private static Claim fromJsonClaim(JsonClaim jsonClaim) {
+            return new Claim(parsePayerClaim(jsonClaim.paymentClaim()),
+                    Instant.parse(jsonClaim.submittedAt()), ClaimStatus.valueOf(jsonClaim.status()),
+                    Optional.ofNullable(jsonClaim.clearingHouseResponse())
+                            .map(ClearingHouseResponse::fromJsonResponse));
+        }
+    }
+
+    private record JsonClaim(String paymentClaim, String submittedAt, String status,
+            JsonResponse clearingHouseResponse) {
+    }
+
+    private record JsonResponse(String remittanceResponse, String receivedAt) {
+    }
+
+    enum ClaimStatus {
+        PENDING, RESPONSE_RECEIVED,
+    }
+
 
     private static PayerClaim parsePayerClaim(String base64) {
         try {
@@ -127,14 +167,5 @@ public class ClaimStore {
         }
     }
 
-    private record JsonClaim(String paymentClaim, String status,
-            JsonResponse clearingHouseResponse) {
-    }
 
-    private record JsonResponse(String remittanceResponse, String receivedAt) {
-    }
-
-    enum ClaimStatus {
-        PENDING, RESPONSE_RECEIVED,
-    }
 }
