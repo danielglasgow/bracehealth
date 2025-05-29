@@ -1,5 +1,4 @@
 import pytest
-from datetime import datetime
 from generated import billing_pb2
 from main import json_to_payer_claim
 
@@ -76,6 +75,7 @@ def test_json_to_payer_claim_success():
     assert isinstance(result, billing_pb2.PayerClaim)
 
     # Not sure if the rest of these are worthwhile, they are kind of just "change detector tests"
+    # Would be nice to just have a test per field based on if it's required or not and testing any validation logic
     assert result.claim_id == "CLM1234567"
     assert result.place_of_service_code == 11
     assert result.insurance.payer_id == billing_pb2.PayerId.MEDICARE
@@ -92,6 +92,7 @@ def test_json_to_payer_claim_success():
     assert result.organization.contact.phone_number == "555-123-4567"
 
 
+# E.g examples of testing validation logic
 def test_invalid_gender_fails():
     claim = _valid_json()
     claim["patient"]["gender"] = "X"

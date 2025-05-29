@@ -9,6 +9,15 @@ service BillingService {
   rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
 }
 
+message RemittanceResponse {
+  string claim_id = 1;
+  double payer_paid_amount = 2;
+  double coinsurance_amount = 3;
+  double copay_amount = 4;
+  double deductible_amount = 5;
+  double not_allowed_amount = 6;
+}
+
 message SubmitClaimRequest {
   PayerClaim claim = 1;
 }
@@ -92,3 +101,4 @@ enum Gender {
   M                         = 1;
   F                         = 2;
 }
+

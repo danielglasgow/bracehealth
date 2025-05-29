@@ -26,15 +26,4 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
             responseObserver.onError(e);
         }
     }
-
-    private static String claimToString(PayerClaim claim) {
-        return String.format("Claim ID: %s, Place of Service Code: %s, Insurance: %s, Patient: %s, Organization: %s, Rendering Provider: %s, Service Lines: %s",
-                claim.getClaimId(),
-                claim.getPlaceOfServiceCode(),
-                claim.getInsurance(),
-                claim.getPatient(),
-                claim.getOrganization(),
-                claim.getRenderingProvider(),
-                claim.getServiceLinesList());
-    }
 } 
