@@ -77,7 +77,6 @@ public class ClaimStore {
                                                             r.remittanceResponse().toByteArray()),
                                                     r.receivedAt().toString()))
                                             .orElse(null))));
-            System.out.println("Writing claims to disk: " + jsonClaims);
             objectMapper.writeValue(storagePath.toFile(), jsonClaims);
             logger.info("Successfully persisted claims to disk");
         } catch (IOException e) {

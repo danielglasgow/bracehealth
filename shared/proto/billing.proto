@@ -5,10 +5,44 @@ package com.bracehealth.shared;
 option java_multiple_files = true;
 option java_package = "com.bracehealth.shared";
 
+// TODO: This file should really be broken down based on which deps are used by which service, rather than one big proto.
+// Something like the PayerClaim which is shared can remain in a shared location.
+
 service BillingService {
   rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
   rpc receiveRemittance(ReceiveRemittanceRequest) returns (ReceiveRemittanceResponse);
+  rpc getAccountsReceivable(GetAccountsReceivableRequest) returns (GetAccountsReceivableResponse);
 }
+
+message AccountsReceivableBucket {
+  int32 start_minutes_ago = 1; // If not specified, assumed to be 0
+  int32 end_minutes_ago = 2; // If not specified, looks back forever from start_minutes_ago
+}
+
+message GetAccountsReceivableRequest {
+  repeated AccountsReceivableBucket bucket = 1;
+  // If not specified, all payers are included, otherwise, each payer gets row
+  repeated string payer_filter = 2;
+}
+
+message GetAccountsReceivableResponse {
+  repeated AccountsReceivableBucket bucket = 1;
+}
+
+message AccountsReceivableRow {
+  string payer_id = 1;
+  string payer_name = 2;
+  repeated AccountsReceivableBucketValue bucket_value = 3;
+  // Maybe add a total amount? This could be sum of buckets, or the total amount for the payer, independent of buckets requested
+}
+
+// TODO: Include currency but for now we'll just use USD
+message AccountsReceivableBucketValue {
+  AccountsReceivableBucket bucket = 1;
+  double amount = 2;
+}
+
+
 
 service ClearingHouseService {
   // In theory this should have it's own request type that tells the clearinghouse who to callback to on completion
