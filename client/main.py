@@ -1,20 +1,21 @@
 import grpc
-import sys
-import os
-
-# Add the generated protobuf files to the Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), "generated"))
+from generated import billing_pb2
+from generated import billing_pb2_grpc
 
 
-def main():
-    # Create a gRPC channel to the BillingService
-    channel = grpc.insecure_channel("localhost:8002")
+def run():
+    # Create a gRPC channel
+    with grpc.insecure_channel("localhost:9090") as channel:
+        # Create a stub (client)
+        stub = billing_pb2_grpc.BillingServiceStub(channel)
 
-    # TODO: Import and use the generated gRPC stub
-    # This will be implemented once we have the proto files and generated code
+        # Create a request
+        request = billing_pb2.HelloRequest(name="World")
 
-    print("Connected to BillingService on port 8002")
+        # Make the call
+        response = stub.hello(request)
+        print("Response received:", response.greeting)
 
 
 if __name__ == "__main__":
-    main()
+    run()
