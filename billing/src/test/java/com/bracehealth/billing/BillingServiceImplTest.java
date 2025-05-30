@@ -263,6 +263,76 @@ class BillingServiceImplTest {
                 "Jane's deductible should be 0.0");
     }
 
+    @Test
+    void getPatientAccountsReceivable_allResponsesReceived() throws Exception {
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+
+        PayerClaim johnClaim1 =
+                getPayerClaimBuilder("C1", PayerId.MEDICARE, 100.0).setPatient(Patient.newBuilder()
+                        .setFirstName("John").setLastName("Doe").setEmail("john@example.com")
+                        .setGender(Gender.M).setDob("1980-01-01").build()).build();
+        claimStore.addClaim(johnClaim1);
+        PayerClaim johnClaim2 =
+                getPayerClaimBuilder("C2", PayerId.MEDICARE, 200.0).setPatient(Patient.newBuilder()
+                        .setFirstName("John").setLastName("Doe").setEmail("john@example.com")
+                        .setGender(Gender.M).setDob("1980-01-01").build()).build();
+        claimStore.addClaim(johnClaim2);
+        PayerClaim janeClaim = getPayerClaimBuilder("C3", PayerId.UNITED_HEALTH_GROUP, 150.0)
+                .setPatient(Patient.newBuilder().setFirstName("Jane").setLastName("Smith")
+                        .setEmail("jane@example.com").setGender(Gender.F).setDob("1985-01-01")
+                        .build())
+                .build();
+        claimStore.addClaim(janeClaim);
+
+        RemittanceResponse remittanceResponse = RemittanceResponse.newBuilder().setClaimId("C1")
+                .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
+                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+        claimStore.addResponse("C1", remittanceResponse);
+
+        remittanceResponse = RemittanceResponse.newBuilder().setClaimId("C2")
+                .setPayerPaidAmount(160.0).setCopayAmount(20.0).setCoinsuranceAmount(10.0)
+                .setDeductibleAmount(10.0).setNotAllowedAmount(0.0).build();
+        claimStore.addResponse("C2", remittanceResponse);
+
+        remittanceResponse = RemittanceResponse.newBuilder().setClaimId("C3")
+                .setPayerPaidAmount(120.0).setCopayAmount(15.0).setCoinsuranceAmount(10.0)
+                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+        claimStore.addResponse("C3", remittanceResponse);
+
+        GetPatientAccountsReceivableResponse response =
+                executePatientAccountsReceivableRequest(claimStore);
+
+        assertEquals(2, response.getRowCount(), "Should have 2 rows (one per patient)");
+
+        // For John:
+        // - C1: 10.0 copay, 5.0 coinsurance, 5.0 deductible
+        // - C2: 20.0 copay, 10.0 coinsurance, 10.0 deductible
+        // Total: 30.0 copay, 15.0 coinsurance, 15.0 deductible
+        PatientAccountsReceivableRow johnRow =
+                response.getRowList().stream()
+                        .filter(row -> row.getPatient().getFirstName().equals("John")
+                                && row.getPatient().getLastName().equals("Doe"))
+                        .findFirst().orElseThrow();
+        assertEquals(30.0, johnRow.getOutstandingCopay(), 0.001,
+                "John's copay should be 30.0 (10.0 + 20.0)");
+        assertEquals(15.0, johnRow.getOutstandingCoinsurance(), 0.001,
+                "John's coinsurance should be 15.0 (5.0 + 10.0)");
+        assertEquals(15.0, johnRow.getOutstandingDeductible(), 0.001,
+                "John's deductible should be 15.0 (5.0 + 10.0)");
+
+        // For Jane:
+        // - C3: 15.0 copay, 10.0 coinsurance, 5.0 deductible
+        PatientAccountsReceivableRow janeRow = response.getRowList().stream()
+                .filter(row -> row.getPatient().getFirstName().equals("Jane")
+                        && row.getPatient().getLastName().equals("Smith"))
+                .findFirst().orElseThrow();
+        assertEquals(15.0, janeRow.getOutstandingCopay(), 0.001, "Jane's copay should be 15.0");
+        assertEquals(10.0, janeRow.getOutstandingCoinsurance(), 0.001,
+                "Jane's coinsurance should be 10.0");
+        assertEquals(5.0, janeRow.getOutstandingDeductible(), 0.001,
+                "Jane's deductible should be 5.0");
+    }
+
     private static GetAccountsReceivableResponse executeRequest(ClaimStore claimStore,
             GetAccountsReceivableRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
