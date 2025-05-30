@@ -62,7 +62,11 @@ message AccountsReceivableBucketValue {
 
 service ClearingHouseService {
   // In theory this should have it's own request type that tells the clearinghouse who to callback to on completion
-  rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
+  rpc submitClaim(SubmitClaimRequest) returns (ClearingHouseSubmitClaimResponse);
+}
+
+message ClearingHouseSubmitClaimResponse {
+  bool success = 1;
 }
 
 message RemittanceResponse {
@@ -87,7 +91,14 @@ message SubmitClaimRequest {
 }
 
 message SubmitClaimResponse {
-  bool success = 1;
+  SubmitClaimResult result = 1;
+}
+
+enum SubmitClaimResult {
+  SUBMIT_CLAIM_RESULT_UNSPECIFIED = 0;
+  SUBMIT_CLAIM_RESULT_SUCCESS = 1;
+  SUBMIT_CLAIM_RESULT_FAILURE = 2;
+  SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED = 3;
 }
 
 message PayerClaim {

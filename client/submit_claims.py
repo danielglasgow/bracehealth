@@ -104,6 +104,46 @@ def json_to_payer_claim(j: dict) -> billing_pb2.PayerClaim:
     )
 
 
+def submit_claim(
+    stub: billing_pb2_grpc.BillingServiceStub, claim_msg: billing_pb2.PayerClaim
+) -> None:
+    retry_count = 0
+    while retry_count < RETRY_LIMIT:
+        try:
+            result = stub.submitClaim(
+                billing_pb2.SubmitClaimRequest(claim=claim_msg),
+                timeout=5,
+            ).result
+            if result == billing_pb2.SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS:
+                print("✅", "claim_id=", claim_msg.claim_id)
+                return result
+            elif (
+                result
+                == billing_pb2.SubmitClaimResult.SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED
+            ):
+                return result
+            else:
+                print("❌", "claim_id=", claim_msg.claim_id, "failed")
+                retry_count += 1
+                if retry_count < RETRY_LIMIT:
+                    print(
+                        f"⚠️  Retry {retry_count}/{RETRY_LIMIT} for claim_id={claim_msg.claim_id}"
+                    )
+                    time.sleep(1)
+                else:
+                    return result
+        except grpc.RpcError as err:
+            retry_count += 1
+            print(f"❌ gRPC error: {err}")
+            if retry_count < RETRY_LIMIT:
+                print(
+                    f"⚠️  Retry {retry_count}/{RETRY_LIMIT} for claim_id={claim_msg.claim_id}: {err}"
+                )
+                time.sleep(1)
+            else:
+                return billing_pb2.SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE
+
+
 # ───────────────────────── main ────────────────────────── #
 
 
@@ -147,41 +187,21 @@ def main() -> None:
                 print(f"[line {lineno}] ⚠️  skipped: {exc}")
                 continue
 
-            retry_count = 0
-            while retry_count < RETRY_LIMIT:
-                try:
-                    ok = stub.submitClaim(
-                        billing_pb2.SubmitClaimRequest(claim=claim_msg),
-                        timeout=5,
-                    ).success
-                    if ok:
-                        print(("✅" if ok else "❌"), "claim_id=", claim_msg.claim_id)
-                        break
-                    else:
-                        retry_count += 1
-                        if retry_count < RETRY_LIMIT:
-                            print(
-                                f"⚠️  Retry {retry_count}/{RETRY_LIMIT} for claim_id={claim_msg.claim_id}"
-                            )
-                            time.sleep(rate)
-                        else:
-                            print(
-                                f"❌ Failed after {RETRY_LIMIT} attempts for claim_id={claim_msg.claim_id}"
-                            )
-                except grpc.RpcError as err:
-                    retry_count += 1
-                    print(f"❌ gRPC error: {err}")
-                    if retry_count < RETRY_LIMIT:
-                        print(
-                            f"⚠️  Retry {retry_count}/{RETRY_LIMIT} for claim_id={claim_msg.claim_id}: {err}"
-                        )
-                        time.sleep(rate)
-                    else:
-                        print(
-                            f"❌ Failed after {RETRY_LIMIT} attempts for claim_id={claim_msg.claim_id}: {err}"
-                        )
-
-            time.sleep(rate)
+            result = submit_claim(stub, claim_msg)
+            if result == billing_pb2.SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE:
+                print(
+                    f"❌ Failed after {RETRY_LIMIT} attempts for claim_id={claim_msg.claim_id}"
+                )
+            elif (
+                result
+                == billing_pb2.SubmitClaimResult.SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED
+            ):
+                print(f"⚠️  claim_id={claim_msg.claim_id} already submitted. Skipping.")
+            elif result == billing_pb2.SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS:
+                print(f"✅ claim_id={claim_msg.claim_id} submitted")
+                time.sleep(rate)
+            else:
+                print(f"❌ Unknown result: {result}")
 
     print("✔ done")
 

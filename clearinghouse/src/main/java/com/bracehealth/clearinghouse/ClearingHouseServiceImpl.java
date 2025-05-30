@@ -1,6 +1,5 @@
 package com.bracehealth.clearinghouse;
 
-import com.bracehealth.shared.*;
 import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
@@ -12,6 +11,16 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import net.devh.boot.grpc.client.inject.GrpcClient;
+import com.bracehealth.shared.ClearingHouseServiceGrpc;
+import com.bracehealth.shared.SubmitClaimRequest;
+import com.bracehealth.shared.ClearingHouseSubmitClaimResponse;
+import com.bracehealth.shared.PayerId;
+import com.bracehealth.shared.BillingServiceGrpc;
+import com.bracehealth.shared.PayerClaim;
+import com.bracehealth.shared.RemittanceResponse;
+import com.bracehealth.shared.SubmitRemittanceRequest;
+import com.bracehealth.shared.SubmitRemittanceResponse;
+import com.bracehealth.shared.ServiceLine;
 
 @GrpcService
 public class ClearingHouseServiceImpl
@@ -36,7 +45,7 @@ public class ClearingHouseServiceImpl
 
     @Override
     public void submitClaim(SubmitClaimRequest request,
-            StreamObserver<SubmitClaimResponse> responseObserver) {
+            StreamObserver<ClearingHouseSubmitClaimResponse> responseObserver) {
         try {
             PayerClaim claim = request.getClaim();
             logger.info("Received claim submission for claim ID: {} to payer: {}",
@@ -44,8 +53,8 @@ public class ClearingHouseServiceImpl
             PayerConfig payerConfig = payerConfigs.get(claim.getInsurance().getPayerId());
             if (payerConfig == null) {
                 logger.error("Payer {} not supported", claim.getInsurance().getPayerId());
-                SubmitClaimResponse response =
-                        SubmitClaimResponse.newBuilder().setSuccess(false).build();
+                ClearingHouseSubmitClaimResponse response =
+                        ClearingHouseSubmitClaimResponse.newBuilder().setSuccess(false).build();
                 responseObserver.onNext(response);
                 responseObserver.onCompleted();
                 return;
@@ -53,8 +62,8 @@ public class ClearingHouseServiceImpl
 
             submitToMockWorkQueue(claim, payerConfig);
 
-            SubmitClaimResponse response =
-                    SubmitClaimResponse.newBuilder().setSuccess(true).build();
+            ClearingHouseSubmitClaimResponse response =
+                    ClearingHouseSubmitClaimResponse.newBuilder().setSuccess(true).build();
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (Exception e) {

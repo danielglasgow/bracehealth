@@ -32,32 +32,34 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
             logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
             if (claimStore.containsClaim(claim.getClaimId())) {
                 logger.error("Claim with ID {} already exists", claim.getClaimId());
-                responseObserver.onNext(SubmitClaimResponse.newBuilder().setSuccess(false).build());
+                responseObserver.onNext(
+                        createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED));
                 responseObserver.onCompleted();
                 return;
             }
 
 
             try {
-                SubmitClaimResponse clearingHouseResponse =
+                ClearingHouseSubmitClaimResponse clearingHouseResponse =
                         clearingHouseClient.submitClaim(request);
                 if (!clearingHouseResponse.getSuccess()) {
                     logger.error("Failed to submit claim {} to clearinghouse", claim.getClaimId());
                     responseObserver
-                            .onNext(SubmitClaimResponse.newBuilder().setSuccess(false).build());
+                            .onNext(createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE));
                     responseObserver.onCompleted();
                     return;
 
                 }
             } catch (Exception e) {
                 logger.error("Error submitting claim {} to clearinghouse", claim.getClaimId(), e);
-                responseObserver.onNext(SubmitClaimResponse.newBuilder().setSuccess(false).build());
+                responseObserver
+                        .onNext(createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE));
                 responseObserver.onCompleted();
                 return;
 
             }
             claimStore.addClaim(claim);
-            responseObserver.onNext(SubmitClaimResponse.newBuilder().setSuccess(true).build());
+            responseObserver.onNext(createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS));
             responseObserver.onCompleted();
         } catch (Exception e) {
             logger.error("Error processing claim submission", e);
@@ -184,4 +186,10 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
             responseObserver.onError(e);
         }
     }
+
+    private static SubmitClaimResponse createResponse(SubmitClaimResult result) {
+        return SubmitClaimResponse.newBuilder().setResult(result).build();
+    }
+
+
 }

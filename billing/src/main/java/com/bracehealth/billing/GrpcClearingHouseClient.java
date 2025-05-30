@@ -2,7 +2,7 @@ package com.bracehealth.billing;
 
 import com.bracehealth.shared.ClearingHouseServiceGrpc;
 import com.bracehealth.shared.SubmitClaimRequest;
-import com.bracehealth.shared.SubmitClaimResponse;
+import com.bracehealth.shared.ClearingHouseSubmitClaimResponse;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -15,7 +15,7 @@ public class GrpcClearingHouseClient implements ClearingHouseClient {
     }
 
     @Override
-    public SubmitClaimResponse submitClaim(SubmitClaimRequest request) {
+    public ClearingHouseSubmitClaimResponse submitClaim(SubmitClaimRequest request) {
         return clearingHouseStub.submitClaim(request);
     }
 }

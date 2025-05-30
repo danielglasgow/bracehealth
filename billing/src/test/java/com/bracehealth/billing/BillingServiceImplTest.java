@@ -208,10 +208,10 @@ class BillingServiceImplTest {
         SubmitClaimRequest request = SubmitClaimRequest.newBuilder().setClaim(claim).build();
 
         SubmitClaimResponse response = executeSubmitClaimRequest(claimStore, request);
-        assertTrue(response.getSuccess(), "First submission should succeed");
+        assertEquals(SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS, response.getResult());
 
         response = executeSubmitClaimRequest(claimStore, request);
-        assertFalse(response.getSuccess(), "Duplicate submission should fail");
+        assertEquals(SubmitClaimResult.SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED, response.getResult());
     }
 
     @Test
@@ -432,8 +432,8 @@ class BillingServiceImplTest {
 
     private static class SuccessClearingHouseClient implements ClearingHouseClient {
         @Override
-        public SubmitClaimResponse submitClaim(SubmitClaimRequest request) {
-            return SubmitClaimResponse.newBuilder().setSuccess(true).build();
+        public ClearingHouseSubmitClaimResponse submitClaim(SubmitClaimRequest request) {
+            return ClearingHouseSubmitClaimResponse.newBuilder().setSuccess(true).build();
         }
     }
 }

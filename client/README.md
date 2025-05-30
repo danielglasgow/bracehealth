@@ -69,3 +69,9 @@ python submit_claims.py claims.txt --rate 1
 ```
  python poll_billing_service.py --interval 5
 ```
+
+## Debug
+
+```
+ python submit_to_clearinghouse.py claims.txt --rate 1
+```
