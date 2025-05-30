@@ -97,9 +97,8 @@ public class ClaimStore {
 
     public void writeToDisk() {
         try {
-            ImmutableMap<String, JsonClaim> jsonClaims =
-                    ImmutableMap.copyOf(claims.entrySet().stream().collect(Collectors
-                            .toMap(Map.Entry::getKey, entry -> entry.getValue().toJsonClaim())));
+            Map<String, JsonClaim> jsonClaims = claims.entrySet().stream().collect(
+                    Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().toJsonClaim()));
             objectMapper.writeValue(storagePath.toFile(), jsonClaims);
             logger.info("Successfully persisted claims to disk");
         } catch (IOException e) {
@@ -110,20 +109,19 @@ public class ClaimStore {
     public static ClaimStore newInstanceFromDisk(Path storagePath) {
         try {
             if (Files.exists(storagePath)) {
-                ImmutableMap<String, JsonClaim> jsonClaims =
-                        objectMapper.readValue(storagePath.toFile(),
-                                objectMapper.getTypeFactory().constructMapType(ImmutableMap.class,
-                                        String.class, JsonClaim.class));
+                Map<String, JsonClaim> jsonClaims =
+                        objectMapper.readValue(storagePath.toFile(), objectMapper.getTypeFactory()
+                                .constructMapType(Map.class, String.class, JsonClaim.class));
                 ImmutableMap<String, Claim> claims = ImmutableMap.copyOf(
                         jsonClaims.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
                                 entry -> Claim.fromJsonClaim(entry.getValue()))));
+                logger.info("Loaded {} claims from disk", claims.size());
                 return new ClaimStore(storagePath, claims);
             }
         } catch (IOException e) {
             logger.warn("Failed to load claims from disk, starting with empty store", e);
         }
         return new ClaimStore(storagePath, ImmutableMap.of());
-
     }
 
     record ClearingHouseResponse(RemittanceResponse remittanceResponse, Instant receivedAt) {

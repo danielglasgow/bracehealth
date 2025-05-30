@@ -1,3 +1,4 @@
 target/
 .logs/
 test_data/
+claims.json

@@ -7,8 +7,8 @@ import org.springframework.stereotype.Component;
 /**
  * Persists the claims to disk on application shutdown.
  * 
- * Maybe I could put this in the ClaimStore class, but I'm not going to
- * expreiment with that in case that's "fighting the framework".
+ * Maybe I could put this in the ClaimStore class, but I'm not going to expreiment with that in case
+ * that's "fighting the framework".
  */
 @Component
 public class ClaimStorePersistenceListener implements ApplicationListener<ContextClosedEvent> {
@@ -20,6 +20,7 @@ public class ClaimStorePersistenceListener implements ApplicationListener<Contex
 
     @Override
     public void onApplicationEvent(ContextClosedEvent event) {
+        // Skipping persistence for now
         claimStore.writeToDisk();
     }
 }
