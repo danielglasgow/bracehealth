@@ -118,12 +118,12 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
     private double calculateBucketAmount(List<ClaimStore.Claim> claims,
             AccountsReceivableBucket bucket) {
         Instant now = Instant.now();
-        Instant startTime = bucket.getStartMinutesAgo() > 0
-                ? now.minusSeconds(bucket.getStartMinutesAgo() * 60L)
-                : Instant.EPOCH;
+        Instant startTime =
+                bucket.getStartSecondsAgo() > 0 ? now.minusSeconds(bucket.getStartSecondsAgo())
+                        : Instant.EPOCH;
         Instant endTime =
-                bucket.getEndMinutesAgo() > 0 ? now.minusSeconds(bucket.getEndMinutesAgo() * 60L)
-                        : now;
+                bucket.getEndSecondsAgo() > 0 ? now.minusSeconds(bucket.getEndSecondsAgo()) : now;
+
         return claims.stream()
                 .filter(claim -> claim.submittedAt().isAfter(startTime)
                         && claim.submittedAt().isBefore(endTime))

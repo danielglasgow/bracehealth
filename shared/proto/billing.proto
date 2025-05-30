@@ -32,8 +32,8 @@ message PatientAccountsReceivableRow {
 
 
 message AccountsReceivableBucket {
-  int32 start_minutes_ago = 1; // If not specified, looks back forever from end_minutes_ago
-  int32 end_minutes_ago = 2; // If not specified, assumed to be 0
+  int32 start_seconds_ago = 1; // If not specified, looks back forever from end_seconds_ago
+  int32 end_seconds_ago = 2; // If not specified, assumed to be 0
 }
 
 message GetAccountsReceivableRequest {

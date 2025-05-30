@@ -37,7 +37,7 @@ class BillingServiceImplTest {
 
         GetAccountsReceivableRequest request =
                 GetAccountsReceivableRequest.newBuilder().addBucket(AccountsReceivableBucket
-                        .newBuilder().setStartMinutesAgo(120).setEndMinutesAgo(0).build()).build();
+                        .newBuilder().setStartSecondsAgo(180).setEndSecondsAgo(0).build()).build();
 
         GetAccountsReceivableResponse response = executeRequest(claimStore, request);
 
@@ -143,13 +143,13 @@ class BillingServiceImplTest {
                         .put("A4a", anthemThreePlus2).build());
 
         GetAccountsReceivableRequest request = GetAccountsReceivableRequest.newBuilder()
-                .addBucket(AccountsReceivableBucket.newBuilder().setStartMinutesAgo(1)
-                        .setEndMinutesAgo(0).build())
-                .addBucket(AccountsReceivableBucket.newBuilder().setStartMinutesAgo(2)
-                        .setEndMinutesAgo(1).build())
-                .addBucket(AccountsReceivableBucket.newBuilder().setStartMinutesAgo(3)
-                        .setEndMinutesAgo(2).build())
-                .addBucket(AccountsReceivableBucket.newBuilder().setEndMinutesAgo(3).build())
+                .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(60)
+                        .setEndSecondsAgo(0).build())
+                .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(120)
+                        .setEndSecondsAgo(60).build())
+                .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(180)
+                        .setEndSecondsAgo(120).build())
+                .addBucket(AccountsReceivableBucket.newBuilder().setEndSecondsAgo(180).build())
                 .build();
 
         GetAccountsReceivableResponse response = executeRequest(claimStore, request);
