@@ -52,6 +52,12 @@ pip freeze > requirements.txt
 pytest test_submit_claims.py -v
 ```
 
+## Generate
+
+```
+python scripts/generate_claims.py 200  claims.txt
+```
+
 ## Run
 
 ```
