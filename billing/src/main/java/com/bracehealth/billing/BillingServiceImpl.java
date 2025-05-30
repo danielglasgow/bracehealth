@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
-import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,13 +16,12 @@ import java.util.stream.Collectors;
 public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(BillingServiceImpl.class);
     private final ClaimStore claimStore;
-
-    @GrpcClient("clearinghouse-service")
-    private ClearingHouseServiceGrpc.ClearingHouseServiceBlockingStub clearingHouseService;
+    private final ClearingHouseClient clearingHouseClient;
 
     @Autowired
-    public BillingServiceImpl(ClaimStore claimStore) {
+    public BillingServiceImpl(ClaimStore claimStore, ClearingHouseClient clearingHouseClient) {
         this.claimStore = claimStore;
+        this.clearingHouseClient = clearingHouseClient;
     }
 
     @Override
@@ -42,7 +40,7 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
 
             try {
                 SubmitClaimResponse clearingHouseResponse =
-                        clearingHouseService.submitClaim(request);
+                        clearingHouseClient.submitClaim(request);
                 if (!clearingHouseResponse.getSuccess()) {
                     logger.error("Failed to submit claim {} to clearinghouse", claim.getClaimId());
                     responseObserver

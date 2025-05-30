@@ -20,6 +20,8 @@ class BillingServiceImplTest {
     @TempDir
     Path tempDir;
 
+    private final ClearingHouseClient clearingHouseClient = new SuccessClearingHouseClient();
+
     @Test
     void getAccountsReceivable_singleBucket() throws Exception {
         Instant now = Instant.now();
@@ -333,14 +335,12 @@ class BillingServiceImplTest {
                 "Jane's deductible should be 5.0");
     }
 
-    private static GetAccountsReceivableResponse executeRequest(ClaimStore claimStore,
+
+    private GetAccountsReceivableResponse executeRequest(ClaimStore claimStore,
             GetAccountsReceivableRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         GetAccountsReceivableResponse[] responseHolder = new GetAccountsReceivableResponse[1];
-
-        BillingServiceGrpc.BillingServiceImplBase billingService =
-                new BillingServiceImpl(claimStore);
-
+        BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
         billingService.getAccountsReceivable(request,
                 new StreamObserver<GetAccountsReceivableResponse>() {
                     @Override
@@ -350,7 +350,7 @@ class BillingServiceImplTest {
 
                     @Override
                     public void onError(Throwable t) {
-                        fail("Request failed", t);
+                        throw new RuntimeException(t);
                     }
 
                     @Override
@@ -358,20 +358,15 @@ class BillingServiceImplTest {
                         latch.countDown();
                     }
                 });
-
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
-        assertNotNull(responseHolder[0], "Response should not be null");
         return responseHolder[0];
     }
 
-    private static SubmitClaimResponse executeSubmitClaimRequest(ClaimStore claimStore,
+    private SubmitClaimResponse executeSubmitClaimRequest(ClaimStore claimStore,
             SubmitClaimRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         SubmitClaimResponse[] responseHolder = new SubmitClaimResponse[1];
-
-        BillingServiceGrpc.BillingServiceImplBase billingService =
-                new BillingServiceImpl(claimStore);
-
+        BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
         billingService.submitClaim(request, new StreamObserver<SubmitClaimResponse>() {
             @Override
             public void onNext(SubmitClaimResponse response) {
@@ -380,7 +375,7 @@ class BillingServiceImplTest {
 
             @Override
             public void onError(Throwable t) {
-                fail("Request failed", t);
+                throw new RuntimeException(t);
             }
 
             @Override
@@ -388,23 +383,18 @@ class BillingServiceImplTest {
                 latch.countDown();
             }
         });
-
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
-        assertNotNull(responseHolder[0], "Response should not be null");
         return responseHolder[0];
     }
 
-    private static GetPatientAccountsReceivableResponse executePatientAccountsReceivableRequest(
+    private GetPatientAccountsReceivableResponse executePatientAccountsReceivableRequest(
             ClaimStore claimStore) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         GetPatientAccountsReceivableResponse[] responseHolder =
                 new GetPatientAccountsReceivableResponse[1];
-
-        BillingServiceGrpc.BillingServiceImplBase billingService =
-                new BillingServiceImpl(claimStore);
-
+        BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
         billingService.getPatientAccountsReceivable(
-                GetPatientAccountsReceivableRequest.newBuilder().build(),
+                GetPatientAccountsReceivableRequest.getDefaultInstance(),
                 new StreamObserver<GetPatientAccountsReceivableResponse>() {
                     @Override
                     public void onNext(GetPatientAccountsReceivableResponse response) {
@@ -413,7 +403,7 @@ class BillingServiceImplTest {
 
                     @Override
                     public void onError(Throwable t) {
-                        fail("Request failed", t);
+                        throw new RuntimeException(t);
                     }
 
                     @Override
@@ -421,9 +411,7 @@ class BillingServiceImplTest {
                         latch.countDown();
                     }
                 });
-
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
-        assertNotNull(responseHolder[0], "Response should not be null");
         return responseHolder[0];
     }
 
@@ -440,5 +428,12 @@ class BillingServiceImplTest {
                 .addServiceLines(ServiceLine.newBuilder().setServiceLineId("SL1")
                         .setProcedureCode("99213").setUnits(1).setUnitChargeAmount(amount)
                         .setUnitChargeCurrency("USD").setDoNotBill(false).build());
+    }
+
+    private static class SuccessClearingHouseClient implements ClearingHouseClient {
+        @Override
+        public SubmitClaimResponse submitClaim(SubmitClaimRequest request) {
+            return SubmitClaimResponse.newBuilder().setSuccess(true).build();
+        }
     }
 }

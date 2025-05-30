@@ -15,8 +15,6 @@ public class ClaimStoreConfig {
     @Bean
     @Primary
     public ClaimStore claimStore() {
-        // return new ClaimStore(Paths.get("claims.json"), ImmutableMap.of());
-        // Skipping persistence for now
         return ClaimStore.newInstanceFromDisk(Paths.get("claims.json"));
     }
 

@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
  * 
  * Maybe I could put this in the ClaimStore class, but I'm not going to expreiment with that in case
  * that's "fighting the framework".
+ * 
+ * TODO: Also persist every 10 seconds or something...
  */
 @Component
 public class ClaimStorePersistenceListener implements ApplicationListener<ContextClosedEvent> {
