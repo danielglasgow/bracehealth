@@ -2,6 +2,7 @@ package com.bracehealth.billing;
 
 import com.bracehealth.shared.*;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.slf4j.Logger;
@@ -131,5 +132,52 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                         .filter(sl -> !sl.getDoNotBill())
                         .mapToDouble(sl -> sl.getUnitChargeAmount() * sl.getUnits()).sum())
                 .sum();
+    }
+
+    @Override
+    public void getPatientAccountsReceivable(GetPatientAccountsReceivableRequest request,
+            StreamObserver<GetPatientAccountsReceivableResponse> responseObserver) {
+        try {
+            logger.info("Received patient accounts receivable request");
+
+            ImmutableMap<Patient, ImmutableList<ClaimStore.Claim>> claimsByPatient =
+                    claimStore.getClaimsByPatient();
+
+            GetPatientAccountsReceivableResponse.Builder responseBuilder =
+                    GetPatientAccountsReceivableResponse.newBuilder();
+
+            for (Map.Entry<Patient, ImmutableList<ClaimStore.Claim>> entry : claimsByPatient
+                    .entrySet()) {
+                Patient patient = entry.getKey();
+                ImmutableList<ClaimStore.Claim> patientClaims = entry.getValue();
+                double outstandingCopay = 0.0;
+                double outstandingCoinsurance = 0.0;
+                double outstandingDeductible = 0.0;
+                for (ClaimStore.Claim claim : patientClaims) {
+                    if (claim.status() == ClaimStore.ClaimStatus.RESPONSE_RECEIVED) {
+                        Optional<RemittanceResponse> remittance = claim.clearingHouseResponse()
+                                .map(ClaimStore.ClearingHouseResponse::remittanceResponse);
+                        outstandingCopay +=
+                                remittance.map(RemittanceResponse::getCopayAmount).orElse(0.0);
+                        outstandingCoinsurance += remittance
+                                .map(RemittanceResponse::getCoinsuranceAmount).orElse(0.0);
+                        outstandingDeductible +=
+                                remittance.map(RemittanceResponse::getDeductibleAmount).orElse(0.0);
+                    }
+                }
+
+                // Add row to response
+                responseBuilder.addRow(PatientAccountsReceivableRow.newBuilder().setPatient(patient)
+                        .setOutstandingCopay(outstandingCopay)
+                        .setOutstandingCoinsurance(outstandingCoinsurance)
+                        .setOutstandingDeductible(outstandingDeductible).build());
+            }
+
+            responseObserver.onNext(responseBuilder.build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            logger.error("Error processing patient accounts receivable request", e);
+            responseObserver.onError(e);
+        }
     }
 }

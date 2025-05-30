@@ -23,8 +23,7 @@ message GetPatientAccountsReceivableResponse {
 }
 
 message PatientAccountsReceivableRow {
-  string patient_id = 1;
-  string patient_name = 2;
+  Patient patient = 1;
   double outstanding_copay = 3;
   double outstanding_coinsurance = 4;
   double outstanding_deductible = 5;
@@ -114,6 +113,7 @@ message Insurance {
   string patient_member_id     = 2;
 }
 
+// Should really have an Id
 message Patient {
   string first_name            = 1;
   string last_name             = 2;

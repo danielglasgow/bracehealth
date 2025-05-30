@@ -212,6 +212,57 @@ class BillingServiceImplTest {
         assertFalse(response.getSuccess(), "Duplicate submission should fail");
     }
 
+    @Test
+    void getPatientAccountsReceivable() throws Exception {
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+
+        PayerClaim johnClaim1 =
+                getPayerClaimBuilder("C1", PayerId.MEDICARE, 100.0).setPatient(Patient.newBuilder()
+                        .setFirstName("John").setLastName("Doe").setEmail("john@example.com")
+                        .setGender(Gender.M).setDob("1980-01-01").build()).build();
+        claimStore.addClaim(johnClaim1);
+        PayerClaim johnClaim2 =
+                getPayerClaimBuilder("C2", PayerId.MEDICARE, 200.0).setPatient(Patient.newBuilder()
+                        .setFirstName("John").setLastName("Doe").setEmail("john@example.com")
+                        .setGender(Gender.M).setDob("1980-01-01").build()).build();
+        claimStore.addClaim(johnClaim2);
+        PayerClaim janeClaim = getPayerClaimBuilder("C3", PayerId.UNITED_HEALTH_GROUP, 150.0)
+                .setPatient(Patient.newBuilder().setFirstName("Jane").setLastName("Smith")
+                        .setEmail("jane@example.com").setGender(Gender.F).setDob("1985-01-01")
+                        .build())
+                .build();
+        claimStore.addClaim(janeClaim);
+
+        RemittanceResponse remittanceResponse = RemittanceResponse.newBuilder().setClaimId("C1")
+                .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
+                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+        claimStore.addResponse("C1", remittanceResponse);
+
+        GetPatientAccountsReceivableResponse response =
+                executePatientAccountsReceivableRequest(claimStore);
+
+        assertEquals(2, response.getRowCount(), "Should have 2 rows (one per patient)");
+        PatientAccountsReceivableRow johnRow =
+                response.getRowList().stream()
+                        .filter(row -> row.getPatient().getFirstName().equals("John")
+                                && row.getPatient().getLastName().equals("Doe"))
+                        .findFirst().orElseThrow();
+        assertEquals(10.0, johnRow.getOutstandingCopay(), 0.001, "John's copay should be 10.0");
+        assertEquals(5.0, johnRow.getOutstandingCoinsurance(), 0.001,
+                "John's coinsurance should be 5.0");
+        assertEquals(5.0, johnRow.getOutstandingDeductible(), 0.001,
+                "John's deductible should be 5.0");
+        PatientAccountsReceivableRow janeRow = response.getRowList().stream()
+                .filter(row -> row.getPatient().getFirstName().equals("Jane")
+                        && row.getPatient().getLastName().equals("Smith"))
+                .findFirst().orElseThrow();
+        assertEquals(0.0, janeRow.getOutstandingCopay(), 0.001, "Jane's copay should be 0.0");
+        assertEquals(0.0, janeRow.getOutstandingCoinsurance(), 0.001,
+                "Jane's coinsurance should be 0.0");
+        assertEquals(0.0, janeRow.getOutstandingDeductible(), 0.001,
+                "Jane's deductible should be 0.0");
+    }
+
     private static GetAccountsReceivableResponse executeRequest(ClaimStore claimStore,
             GetAccountsReceivableRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
@@ -267,6 +318,39 @@ class BillingServiceImplTest {
                 latch.countDown();
             }
         });
+
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
+        assertNotNull(responseHolder[0], "Response should not be null");
+        return responseHolder[0];
+    }
+
+    private static GetPatientAccountsReceivableResponse executePatientAccountsReceivableRequest(
+            ClaimStore claimStore) throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        GetPatientAccountsReceivableResponse[] responseHolder =
+                new GetPatientAccountsReceivableResponse[1];
+
+        BillingServiceGrpc.BillingServiceImplBase billingService =
+                new BillingServiceImpl(claimStore);
+
+        billingService.getPatientAccountsReceivable(
+                GetPatientAccountsReceivableRequest.newBuilder().build(),
+                new StreamObserver<GetPatientAccountsReceivableResponse>() {
+                    @Override
+                    public void onNext(GetPatientAccountsReceivableResponse response) {
+                        responseHolder[0] = response;
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                        fail("Request failed", t);
+                    }
+
+                    @Override
+                    public void onCompleted() {
+                        latch.countDown();
+                    }
+                });
 
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
         assertNotNull(responseHolder[0], "Response should not be null");

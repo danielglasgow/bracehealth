@@ -3,6 +3,7 @@ package com.bracehealth.billing;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import com.bracehealth.shared.RemittanceResponse;
+import com.bracehealth.shared.Patient;
 import com.bracehealth.shared.PayerClaim;
 import java.util.Optional;
 import java.time.Instant;
@@ -13,8 +14,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
 import java.nio.file.Files;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.util.stream.Collectors;
 
@@ -65,10 +70,29 @@ public class ClaimStore {
     }
 
     public ImmutableMap<String, Claim> getPendingClaims() {
-        // TODO: This should really be cached / updated as we go
-        return ImmutableMap.copyOf(
-                claims.entrySet().stream().filter(e -> e.getValue().status() == ClaimStatus.PENDING)
-                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+        ImmutableMap.Builder<String, Claim> builder = ImmutableMap.builder();
+        for (Map.Entry<String, Claim> entry : claims.entrySet()) {
+            if (entry.getValue().status() == ClaimStatus.PENDING) {
+                builder.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return builder.build();
+    }
+
+    public ImmutableMap<Patient, ImmutableList<Claim>> getClaimsByPatient() {
+        Map<Patient, List<Claim>> patientClaims = new HashMap<>();
+        for (Claim claim : claims.values()) {
+            Patient patient = claim.claim().getPatient();
+            if (patientClaims.containsKey(patient)) {
+                patientClaims.get(patient).add(claim);
+            } else {
+                List<Claim> claims = new ArrayList<>();
+                claims.add(claim);
+                patientClaims.put(patient, claims);
+            }
+        }
+        return ImmutableMap.copyOf(patientClaims.entrySet().stream().collect(Collectors
+                .toMap(Map.Entry::getKey, entry -> ImmutableList.copyOf(entry.getValue()))));
     }
 
     public void writeToDisk() {
