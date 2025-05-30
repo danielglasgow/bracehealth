@@ -114,18 +114,15 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
         Instant startTime = bucket.getStartMinutesAgo() > 0
                 ? now.minusSeconds(bucket.getStartMinutesAgo() * 60L)
                 : Instant.EPOCH;
-        Instant endTime = now.minusSeconds(bucket.getEndMinutesAgo() * 60L);
-
-        return claims.stream().filter(claim -> claim.submittedAt().isAfter(startTime)
-                && claim.submittedAt().isBefore(endTime)).mapToDouble(claim -> {
-                    double totalAmount = claim.claim().getServiceLinesList().stream()
-                            .filter(sl -> !sl.getDoNotBill())
-                            // Again, just assuming Dollars
-                            .mapToDouble(sl -> sl.getUnitChargeAmount() * sl.getUnits()).sum();
-                    if (totalAmount < 0) {
-                        throw new IllegalArgumentException("Total amount is negative");
-                    }
-                    return totalAmount;
-                }).sum();
+        Instant endTime =
+                bucket.getEndMinutesAgo() > 0 ? now.minusSeconds(bucket.getEndMinutesAgo() * 60L)
+                        : now;
+        return claims.stream()
+                .filter(claim -> claim.submittedAt().isAfter(startTime)
+                        && claim.submittedAt().isBefore(endTime))
+                .mapToDouble(claim -> claim.claim().getServiceLinesList().stream()
+                        .filter(sl -> !sl.getDoNotBill())
+                        .mapToDouble(sl -> sl.getUnitChargeAmount() * sl.getUnits()).sum())
+                .sum();
     }
 }
