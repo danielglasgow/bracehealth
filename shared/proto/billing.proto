@@ -10,7 +10,7 @@ option java_package = "com.bracehealth.shared";
 
 service BillingService {
   rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
-  rpc receiveRemittance(ReceiveRemittanceRequest) returns (ReceiveRemittanceResponse);
+  rpc submitRemittance(SubmitRemittanceRequest) returns (SubmitRemittanceResponse);
   rpc getAccountsReceivable(GetAccountsReceivableRequest) returns (GetAccountsReceivableResponse);
   rpc getPatientAccountsReceivable(GetPatientAccountsReceivableRequest) returns (GetPatientAccountsReceivableResponse);
 }
@@ -74,11 +74,11 @@ message RemittanceResponse {
   double not_allowed_amount = 6;
 }
 
-message ReceiveRemittanceRequest {
+message SubmitRemittanceRequest {
   RemittanceResponse remittance = 1;
 }
 
-message ReceiveRemittanceResponse {
+message SubmitRemittanceResponse {
   bool success = 1;
 }
 

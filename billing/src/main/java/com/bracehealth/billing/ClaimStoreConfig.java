@@ -3,6 +3,7 @@ package com.bracehealth.billing;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import com.google.common.collect.ImmutableMap;
 import java.nio.file.Paths;
 
 
@@ -15,7 +16,8 @@ public class ClaimStoreConfig {
     @Bean
     @Primary
     public ClaimStore claimStore() {
-        return ClaimStore.newInstanceFromDisk(Paths.get("claims.json"));
+        return new ClaimStore(Paths.get("claims.json"), ImmutableMap.of());
+        // return ClaimStore.newInstanceFromDisk(Paths.get("claims.json"));
     }
 
     @Bean

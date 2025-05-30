@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
+import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +17,9 @@ import java.util.stream.Collectors;
 public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(BillingServiceImpl.class);
     private final ClaimStore claimStore;
+
+    @GrpcClient("clearinghouse-service")
+    private ClearingHouseServiceGrpc.ClearingHouseServiceBlockingStub clearingHouseService;
 
     @Autowired
     public BillingServiceImpl(ClaimStore claimStore) {
@@ -30,18 +34,32 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
             logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
             if (claimStore.containsClaim(claim.getClaimId())) {
                 logger.error("Claim with ID {} already exists", claim.getClaimId());
-                SubmitClaimResponse response =
-                        SubmitClaimResponse.newBuilder().setSuccess(false).build();
-                responseObserver.onNext(response);
+                responseObserver.onNext(SubmitClaimResponse.newBuilder().setSuccess(false).build());
                 responseObserver.onCompleted();
                 return;
             }
 
-            claimStore.addClaim(claim);
 
-            SubmitClaimResponse response =
-                    SubmitClaimResponse.newBuilder().setSuccess(true).build();
-            responseObserver.onNext(response);
+            try {
+                SubmitClaimResponse clearingHouseResponse =
+                        clearingHouseService.submitClaim(request);
+                if (!clearingHouseResponse.getSuccess()) {
+                    logger.error("Failed to submit claim {} to clearinghouse", claim.getClaimId());
+                    responseObserver
+                            .onNext(SubmitClaimResponse.newBuilder().setSuccess(false).build());
+                    responseObserver.onCompleted();
+                    return;
+
+                }
+            } catch (Exception e) {
+                logger.error("Error submitting claim {} to clearinghouse", claim.getClaimId(), e);
+                responseObserver.onNext(SubmitClaimResponse.newBuilder().setSuccess(false).build());
+                responseObserver.onCompleted();
+                return;
+
+            }
+            claimStore.addClaim(claim);
+            responseObserver.onNext(SubmitClaimResponse.newBuilder().setSuccess(true).build());
             responseObserver.onCompleted();
         } catch (Exception e) {
             logger.error("Error processing claim submission", e);
@@ -50,19 +68,13 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
     }
 
     @Override
-    public void receiveRemittance(ReceiveRemittanceRequest request,
-            StreamObserver<ReceiveRemittanceResponse> responseObserver) {
+    public void submitRemittance(SubmitRemittanceRequest request,
+            StreamObserver<SubmitRemittanceResponse> responseObserver) {
         try {
             RemittanceResponse remittance = request.getRemittance();
-            logger.info("Received remittance for claim ID: {}, paid amount: {}",
-                    remittance.getClaimId(), remittance.getPayerPaidAmount());
-
+            logger.info("Received remittance for claim ID: {}", remittance.getClaimId());
             claimStore.addResponse(remittance.getClaimId(), remittance);
-
-            ReceiveRemittanceResponse response =
-                    ReceiveRemittanceResponse.newBuilder().setSuccess(true).build();
-
-            responseObserver.onNext(response);
+            responseObserver.onNext(SubmitRemittanceResponse.newBuilder().setSuccess(true).build());
             responseObserver.onCompleted();
         } catch (Exception e) {
             logger.error("Error processing remittance", e);
@@ -78,25 +90,21 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
             logger.info("Received accounts receivable request with {} buckets",
                     request.getBucketCount());
 
-            // TODO: This should really be cached, similarly, we should not look at completed claims
+            // TODO: This should really be cached (and an immutable data structure)
             Map<PayerId, List<ClaimStore.Claim>> claimsByPayer =
                     claimStore.getPendingClaims().values().stream().collect(Collectors
                             .groupingBy(claim -> claim.claim().getInsurance().getPayerId()));
 
-            // Create response builder
             GetAccountsReceivableResponse.Builder responseBuilder =
                     GetAccountsReceivableResponse.newBuilder();
-
             ImmutableList<PayerId> targetPayer = request.getPayerFilterList().size() == 0
                     ? ImmutableList.copyOf(claimsByPayer.keySet())
                     : ImmutableList.copyOf(request.getPayerFilterList());
-
             for (PayerId payerId : targetPayer) {
                 responseBuilder.addRow(
                         createRow(payerId, claimsByPayer.get(payerId), request.getBucketList()));
 
             }
-
             responseObserver.onNext(responseBuilder.build());
             responseObserver.onCompleted();
         } catch (Exception e) {
@@ -165,8 +173,6 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                                 remittance.map(RemittanceResponse::getDeductibleAmount).orElse(0.0);
                     }
                 }
-
-                // Add row to response
                 responseBuilder.addRow(PatientAccountsReceivableRow.newBuilder().setPatient(patient)
                         .setOutstandingCopay(outstandingCopay)
                         .setOutstandingCoinsurance(outstandingCoinsurance)
