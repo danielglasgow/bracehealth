@@ -48,4 +48,12 @@ pip freeze > requirements.txt
 
 ## Test
 
-pytest test_main.py -v
+```
+pytest test_submit_claims.py -v
+```
+
+## Run
+
+```
+python submit_claims.py claims.txt --rate 1
+```

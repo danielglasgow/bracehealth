@@ -1,6 +1,6 @@
 import pytest
 from generated import billing_pb2
-from main import json_to_payer_claim
+from submit_claims import json_to_payer_claim
 
 
 def _valid_json() -> dict:
