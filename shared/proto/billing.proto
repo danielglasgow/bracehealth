@@ -13,6 +13,24 @@ service BillingService {
   rpc submitRemittance(SubmitRemittanceRequest) returns (SubmitRemittanceResponse);
   rpc getAccountsReceivable(GetAccountsReceivableRequest) returns (GetAccountsReceivableResponse);
   rpc getPatientAccountsReceivable(GetPatientAccountsReceivableRequest) returns (GetPatientAccountsReceivableResponse);
+  // We could go alot further here, but wanted to just do this little extra... :)
+  rpc submitPatientPayment(SubmitPatientPaymentRequest) returns (SubmitPatientPaymentResponse);
+}
+
+message SubmitPatientPaymentRequest {
+  string claim_id = 1;
+  double amount = 2;
+}
+
+message SubmitPatientPaymentResponse {
+  SubmitPatientPaymentResult result = 1;
+}
+
+enum SubmitPatientPaymentResult {
+  SUBMIT_PATIENT_PAYMENT_RESULT_UNSPECIFIED = 0;
+  SUBMIT_PATIENT_PAYMENT_RESULT_SUCCESS = 1;
+  SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE = 2;
+  SUBMIT_PATIENT_PAYMENT_NO_OUTSTANDING_BALANCE = 3;
 }
 
 message GetPatientAccountsReceivableRequest {
@@ -24,6 +42,7 @@ message GetPatientAccountsReceivableResponse {
 
 message PatientAccountsReceivableRow {
   Patient patient = 1;
+  repeated string claim_id = 2;
   double outstanding_copay = 3;
   double outstanding_coinsurance = 4;
   double outstanding_deductible = 5;

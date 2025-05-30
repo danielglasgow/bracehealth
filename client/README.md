@@ -70,6 +70,12 @@ python submit_claims.py claims.txt --rate 1
  python poll_billing_service.py --interval 5
 ```
 
+## Pay
+
+```
+python submit_patient_payment.py <Claim> <Payment>
+```
+
 ## Debug
 
 ```

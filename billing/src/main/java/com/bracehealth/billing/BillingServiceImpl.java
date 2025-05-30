@@ -171,18 +171,94 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                                 .map(RemittanceResponse::getCoinsuranceAmount).orElse(0.0);
                         outstandingDeductible +=
                                 remittance.map(RemittanceResponse::getDeductibleAmount).orElse(0.0);
+                        // VERY HACKY update of patient payments
+                        double patientPayment = claim.patientPayment();
+                        if (patientPayment > outstandingCopay) {
+                            patientPayment -= outstandingCopay;
+                            outstandingCopay = 0.0;
+                        } else {
+                            outstandingCopay -= patientPayment;
+                            patientPayment = 0.0;
+                        }
+                        if (patientPayment > outstandingCoinsurance) {
+                            patientPayment -= outstandingCoinsurance;
+                            outstandingCoinsurance = 0.0;
+                        } else {
+                            outstandingCoinsurance -= patientPayment;
+                            patientPayment = 0.0;
+                        }
+                        if (patientPayment > outstandingDeductible) {
+                            patientPayment -= outstandingDeductible;
+                            outstandingDeductible = 0.0;
+                        } else {
+                            outstandingDeductible -= patientPayment;
+                            patientPayment = 0.0;
+                        }
                     }
                 }
-                responseBuilder.addRow(PatientAccountsReceivableRow.newBuilder().setPatient(patient)
-                        .setOutstandingCopay(outstandingCopay)
-                        .setOutstandingCoinsurance(outstandingCoinsurance)
-                        .setOutstandingDeductible(outstandingDeductible).build());
+                responseBuilder
+                        .addRow(PatientAccountsReceivableRow.newBuilder().setPatient(patient)
+                                .setOutstandingCopay(outstandingCopay)
+                                .setOutstandingCoinsurance(outstandingCoinsurance)
+                                .setOutstandingDeductible(outstandingDeductible)
+                                .addAllClaimId(patientClaims.stream()
+                                        .map(claim -> claim.claim().getClaimId())
+                                        .collect(Collectors.toList()))
+                                .build());
             }
 
             responseObserver.onNext(responseBuilder.build());
             responseObserver.onCompleted();
         } catch (Exception e) {
             logger.error("Error processing patient accounts receivable request", e);
+            responseObserver.onError(e);
+        }
+    }
+
+    @Override
+    public void submitPatientPayment(SubmitPatientPaymentRequest request,
+            StreamObserver<SubmitPatientPaymentResponse> responseObserver) {
+        try {
+            String claimId = request.getClaimId();
+            double amount = request.getAmount();
+            logger.info("Received patient payment of {} for claim ID: {}", amount, claimId);
+
+            if (!claimStore.containsClaim(claimId)) {
+                logger.error("Claim with ID {} not found", claimId);
+                responseObserver.onNext(SubmitPatientPaymentResponse.newBuilder()
+                        .setResult(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE)
+                        .build());
+                responseObserver.onCompleted();
+                return;
+            }
+
+            double outstandingBalance = claimStore.getOutstandingPatientBalance(claimId);
+            if (outstandingBalance <= 0) {
+                logger.error("No outstanding balance for claim ID {}", claimId);
+                responseObserver.onNext(SubmitPatientPaymentResponse.newBuilder().setResult(
+                        SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_NO_OUTSTANDING_BALANCE)
+                        .build());
+                responseObserver.onCompleted();
+                return;
+            }
+
+            if (amount > outstandingBalance) {
+                logger.error("Payment amount {} exceeds outstanding balance {} for claim ID {}",
+                        amount, outstandingBalance, claimId);
+                responseObserver.onNext(SubmitPatientPaymentResponse.newBuilder()
+                        .setResult(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE)
+                        .build());
+                responseObserver.onCompleted();
+                return;
+            }
+
+            claimStore.addPatientPayment(claimId, amount);
+            responseObserver.onNext(SubmitPatientPaymentResponse.newBuilder()
+                    .setResult(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_SUCCESS)
+                    .build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            logger.error("Error processing patient payment", e);
             responseObserver.onError(e);
         }
     }

@@ -335,6 +335,78 @@ class BillingServiceImplTest {
                 "Jane's deductible should be 5.0");
     }
 
+    @Test
+    void submitPatientPayment_success() throws Exception {
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
+        claimStore.addClaim(claim);
+
+        RemittanceResponse remittanceResponse = RemittanceResponse.newBuilder().setClaimId("TEST1")
+                .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
+                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+        claimStore.addResponse("TEST1", remittanceResponse);
+
+        SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
+                .setClaimId("TEST1").setAmount(15.0).build();
+
+        SubmitPatientPaymentResponse response =
+                executeSubmitPatientPaymentRequest(claimStore, request);
+        assertEquals(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_SUCCESS,
+                response.getResult());
+    }
+
+    @Test
+    void submitPatientPayment_claimNotFound() throws Exception {
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
+                .setClaimId("NONEXISTENT").setAmount(15.0).build();
+
+        SubmitPatientPaymentResponse response =
+                executeSubmitPatientPaymentRequest(claimStore, request);
+        assertEquals(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE,
+                response.getResult());
+    }
+
+    @Test
+    void submitPatientPayment_noOutstandingBalance() throws Exception {
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
+        claimStore.addClaim(claim);
+
+        // No remittance response means no patient responsibility
+        SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
+                .setClaimId("TEST1").setAmount(15.0).build();
+
+        SubmitPatientPaymentResponse response =
+                executeSubmitPatientPaymentRequest(claimStore, request);
+        assertEquals(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_NO_OUTSTANDING_BALANCE,
+                response.getResult());
+    }
+
+    @Test
+    void submitPatientPayment_amountExceedsBalance() throws Exception {
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
+        claimStore.addClaim(claim);
+
+        RemittanceResponse remittanceResponse = RemittanceResponse.newBuilder().setClaimId("TEST1")
+                .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
+                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+        claimStore.addResponse("TEST1", remittanceResponse);
+
+        SubmitPatientPaymentRequest request =
+                SubmitPatientPaymentRequest.newBuilder().setClaimId("TEST1").setAmount(25.0) // Total
+                                                                                             // patient
+                                                                                             // responsibility
+                                                                                             // is
+                                                                                             // 20.0
+                        .build();
+
+        SubmitPatientPaymentResponse response =
+                executeSubmitPatientPaymentRequest(claimStore, request);
+        assertEquals(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE,
+                response.getResult());
+    }
 
     private GetAccountsReceivableResponse executeRequest(ClaimStore claimStore,
             GetAccountsReceivableRequest request) throws Exception {
@@ -415,9 +487,35 @@ class BillingServiceImplTest {
         return responseHolder[0];
     }
 
+    private SubmitPatientPaymentResponse executeSubmitPatientPaymentRequest(ClaimStore claimStore,
+            SubmitPatientPaymentRequest request) throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        SubmitPatientPaymentResponse[] responseHolder = new SubmitPatientPaymentResponse[1];
+        BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
+        billingService.submitPatientPayment(request,
+                new StreamObserver<SubmitPatientPaymentResponse>() {
+                    @Override
+                    public void onNext(SubmitPatientPaymentResponse response) {
+                        responseHolder[0] = response;
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                        throw new RuntimeException(t);
+                    }
+
+                    @Override
+                    public void onCompleted() {
+                        latch.countDown();
+                    }
+                });
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
+        return responseHolder[0];
+    }
+
     private static ClaimStore.Claim createPendingClaim(PayerClaim claim, Instant submittedAt) {
         return new ClaimStore.Claim(claim, submittedAt, ClaimStore.ClaimStatus.PENDING,
-                Optional.empty());
+                Optional.empty(), 0.0);
     }
 
     private static PayerClaim.Builder getPayerClaimBuilder(String claimId, PayerId payerId,

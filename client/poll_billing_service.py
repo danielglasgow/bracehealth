@@ -114,13 +114,22 @@ def render_aging_table(resp: billing_pb2.GetAccountsReceivableResponse) -> str:
     return _format_table(header, rows)
 
 
+# There is a bug here or in the API (I think the API), where we're not properly aggregating by patient name
+# This appears to have a row per claim id
 def render_patient_table(resp: billing_pb2.GetPatientAccountsReceivableResponse) -> str:
-    header = ["Patient member ID", "Σ Copay", "Σ Coinsurance", "Σ Deductible"]
+    header = [
+        "Patient member ID",
+        "Claim ID",
+        "Σ Copay",
+        "Σ Coinsurance",
+        "Σ Deductible",
+    ]
     rows = []
     for r in resp.row:
         rows.append(
             [
                 r.patient.first_name + " " + r.patient.last_name,
+                ", ".join(r.claim_id),  # Join multiple claim IDs with commas
                 CURRENCY_FMT.format(r.outstanding_copay),
                 CURRENCY_FMT.format(r.outstanding_coinsurance),
                 CURRENCY_FMT.format(r.outstanding_deductible),

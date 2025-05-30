@@ -37,8 +37,6 @@ public class ClaimStore {
     private final Path storagePath;
     private final ConcurrentMap<String, Claim> claims;
 
-
-
     public ClaimStore(Path storagePath, Map<String, Claim> claims) {
         this.storagePath = storagePath;
         this.claims = new ConcurrentHashMap<>(claims);
@@ -50,7 +48,7 @@ public class ClaimStore {
 
     public void addClaim(PayerClaim claim) {
         claims.put(claim.getClaimId(),
-                new Claim(claim, Instant.now(), ClaimStatus.PENDING, Optional.empty()));
+                new Claim(claim, Instant.now(), ClaimStatus.PENDING, Optional.empty(), 0.0));
     }
 
     public void addResponse(String claimId, RemittanceResponse remittanceResponse) {
@@ -63,6 +61,31 @@ public class ClaimStore {
             return claim.updateResponse(clearingHouseResponse)
                     .updateStatus(ClaimStatus.RESPONSE_RECEIVED);
         });
+    }
+
+    public void addPatientPayment(String claimId, double amount) {
+        if (!claims.containsKey(claimId)) {
+            throw new IllegalArgumentException("Claim not found");
+        }
+        claims.computeIfPresent(claimId, (id, claim) -> {
+            return claim.updatePatientPayment(claim.patientPayment() + amount);
+        });
+    }
+
+    public double getOutstandingPatientBalance(String claimId) {
+        if (!claims.containsKey(claimId)) {
+            throw new IllegalArgumentException("Claim not found");
+        }
+        Claim claim = claims.get(claimId);
+        if (claim.status() != ClaimStatus.RESPONSE_RECEIVED) {
+            return 0.0;
+        }
+        Optional<RemittanceResponse> remittance =
+                claim.clearingHouseResponse().map(ClearingHouseResponse::remittanceResponse);
+        double totalPatientResponsibility = remittance
+                .map(r -> r.getCopayAmount() + r.getCoinsuranceAmount() + r.getDeductibleAmount())
+                .orElse(0.0);
+        return Math.max(0.0, totalPatientResponsibility - claim.patientPayment());
     }
 
     public ImmutableMap<String, Claim> getClaims() {
@@ -139,32 +162,41 @@ public class ClaimStore {
     }
 
     record Claim(PayerClaim claim, Instant submittedAt, ClaimStatus status,
-            Optional<ClearingHouseResponse> clearingHouseResponse) {
+            Optional<ClearingHouseResponse> clearingHouseResponse, double patientPayment) {
 
         private Claim updateResponse(ClearingHouseResponse clearingHouseResponse) {
-            return new Claim(claim(), submittedAt(), status(), Optional.of(clearingHouseResponse));
+            return new Claim(claim(), submittedAt(), status(), Optional.of(clearingHouseResponse),
+                    patientPayment());
         }
 
         private Claim updateStatus(ClaimStatus status) {
-            return new Claim(claim(), submittedAt(), status, clearingHouseResponse());
+            return new Claim(claim(), submittedAt(), status, clearingHouseResponse(),
+                    patientPayment());
+        }
+
+        private Claim updatePatientPayment(double patientPayment) {
+            return new Claim(claim(), submittedAt(), status(), clearingHouseResponse(),
+                    patientPayment);
         }
 
         private JsonClaim toJsonClaim() {
             return new JsonClaim(Base64.getEncoder().encodeToString(claim().toByteArray()),
-                    submittedAt().toString(), status().name(), clearingHouseResponse()
-                            .map(ClearingHouseResponse::toJsonResponse).orElse(null));
+                    submittedAt().toString(), status().name(),
+                    clearingHouseResponse().map(ClearingHouseResponse::toJsonResponse).orElse(null),
+                    patientPayment());
         }
 
         private static Claim fromJsonClaim(JsonClaim jsonClaim) {
             return new Claim(parsePayerClaim(jsonClaim.paymentClaim()),
                     Instant.parse(jsonClaim.submittedAt()), ClaimStatus.valueOf(jsonClaim.status()),
-                    Optional.ofNullable(jsonClaim.clearingHouseResponse())
-                            .map(ClearingHouseResponse::fromJsonResponse));
+                    Optional.ofNullable(jsonClaim.clearingHouseResponse()).map(
+                            ClearingHouseResponse::fromJsonResponse),
+                    jsonClaim.patientPayment());
         }
     }
 
     private record JsonClaim(String paymentClaim, String submittedAt, String status,
-            JsonResponse clearingHouseResponse) {
+            JsonResponse clearingHouseResponse, double patientPayment) {
     }
 
     private record JsonResponse(String remittanceResponse, String receivedAt) {
@@ -173,7 +205,6 @@ public class ClaimStore {
     enum ClaimStatus {
         PENDING, RESPONSE_RECEIVED,
     }
-
 
     private static PayerClaim parsePayerClaim(String base64) {
         try {
@@ -192,6 +223,4 @@ public class ClaimStore {
             throw new RuntimeException("Failed to parse RemittanceResponse", e);
         }
     }
-
-
 }
