@@ -39,6 +39,10 @@ public class ClaimStore {
         this.claims = new ConcurrentHashMap<>(claims);
     }
 
+    public boolean containsClaim(String claimId) {
+        return claims.containsKey(claimId);
+    }
+
     public void addClaim(PayerClaim claim) {
         claims.put(claim.getClaimId(),
                 new Claim(claim, Instant.now(), ClaimStatus.PENDING, Optional.empty()));

@@ -27,12 +27,19 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
         try {
             PayerClaim claim = request.getClaim();
             logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
+            if (claimStore.containsClaim(claim.getClaimId())) {
+                logger.error("Claim with ID {} already exists", claim.getClaimId());
+                SubmitClaimResponse response =
+                        SubmitClaimResponse.newBuilder().setSuccess(false).build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
+            }
 
             claimStore.addClaim(claim);
 
             SubmitClaimResponse response =
                     SubmitClaimResponse.newBuilder().setSuccess(true).build();
-
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (Exception e) {

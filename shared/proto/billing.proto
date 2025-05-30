@@ -12,7 +12,24 @@ service BillingService {
   rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
   rpc receiveRemittance(ReceiveRemittanceRequest) returns (ReceiveRemittanceResponse);
   rpc getAccountsReceivable(GetAccountsReceivableRequest) returns (GetAccountsReceivableResponse);
+  rpc getPatientAccountsReceivable(GetPatientAccountsReceivableRequest) returns (GetPatientAccountsReceivableResponse);
 }
+
+message GetPatientAccountsReceivableRequest {
+}
+
+message GetPatientAccountsReceivableResponse {
+  repeated PatientAccountsReceivableRow row = 1;
+}
+
+message PatientAccountsReceivableRow {
+  string patient_id = 1;
+  string patient_name = 2;
+  double outstanding_copay = 3;
+  double outstanding_coinsurance = 4;
+  double outstanding_deductible = 5;
+}
+
 
 message AccountsReceivableBucket {
   int32 start_minutes_ago = 1; // If not specified, looks back forever from end_minutes_ago

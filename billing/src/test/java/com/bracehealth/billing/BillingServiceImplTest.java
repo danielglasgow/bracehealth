@@ -59,6 +59,8 @@ class BillingServiceImplTest {
         assertEquals(150.0, uhgRow.getBucketValue(0).getAmount(), 0.001, "UHG total should be 150");
     }
 
+
+    // I don't love this test, but it's quick and dirty
     @Test
     void getAccountsReceivable_multipleBuckets() throws Exception {
         Instant now = Instant.now();
@@ -197,6 +199,19 @@ class BillingServiceImplTest {
                 "Anthem 3+min should be 675 (475 + 200)");
     }
 
+    @Test
+    void submitClaim_duplicateHandling() throws Exception {
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
+        SubmitClaimRequest request = SubmitClaimRequest.newBuilder().setClaim(claim).build();
+
+        SubmitClaimResponse response = executeSubmitClaimRequest(claimStore, request);
+        assertTrue(response.getSuccess(), "First submission should succeed");
+
+        response = executeSubmitClaimRequest(claimStore, request);
+        assertFalse(response.getSuccess(), "Duplicate submission should fail");
+    }
+
     private static GetAccountsReceivableResponse executeRequest(ClaimStore claimStore,
             GetAccountsReceivableRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
@@ -222,6 +237,36 @@ class BillingServiceImplTest {
                         latch.countDown();
                     }
                 });
+
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
+        assertNotNull(responseHolder[0], "Response should not be null");
+        return responseHolder[0];
+    }
+
+    private static SubmitClaimResponse executeSubmitClaimRequest(ClaimStore claimStore,
+            SubmitClaimRequest request) throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        SubmitClaimResponse[] responseHolder = new SubmitClaimResponse[1];
+
+        BillingServiceGrpc.BillingServiceImplBase billingService =
+                new BillingServiceImpl(claimStore);
+
+        billingService.submitClaim(request, new StreamObserver<SubmitClaimResponse>() {
+            @Override
+            public void onNext(SubmitClaimResponse response) {
+                responseHolder[0] = response;
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                fail("Request failed", t);
+            }
+
+            @Override
+            public void onCompleted() {
+                latch.countDown();
+            }
+        });
 
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
         assertNotNull(responseHolder[0], "Response should not be null");
