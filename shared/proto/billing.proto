@@ -1,0 +1,198 @@
+syntax = "proto3";
+
+package com.bracehealth.shared;
+
+option java_multiple_files = true;
+option java_package = "com.bracehealth.shared";
+
+// TODO: This file should really be broken down based on which deps are used by which service, rather than one big proto.
+// Something like the PayerClaim which is shared can remain in a shared location.
+
+service BillingService {
+  rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
+  rpc submitRemittance(SubmitRemittanceRequest) returns (SubmitRemittanceResponse);
+  rpc getAccountsReceivable(GetAccountsReceivableRequest) returns (GetAccountsReceivableResponse);
+  rpc getPatientAccountsReceivable(GetPatientAccountsReceivableRequest) returns (GetPatientAccountsReceivableResponse);
+  // We could go alot further here, but wanted to just do this little extra... :)
+  rpc submitPatientPayment(SubmitPatientPaymentRequest) returns (SubmitPatientPaymentResponse);
+}
+
+message SubmitPatientPaymentRequest {
+  string claim_id = 1;
+  double amount = 2;
+}
+
+message SubmitPatientPaymentResponse {
+  SubmitPatientPaymentResult result = 1;
+}
+
+enum SubmitPatientPaymentResult {
+  SUBMIT_PATIENT_PAYMENT_RESULT_UNSPECIFIED = 0;
+  SUBMIT_PATIENT_PAYMENT_RESULT_SUCCESS = 1;
+  SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE = 2;
+  SUBMIT_PATIENT_PAYMENT_NO_OUTSTANDING_BALANCE = 3;
+}
+
+message GetPatientAccountsReceivableRequest {
+}
+
+message GetPatientAccountsReceivableResponse {
+  repeated PatientAccountsReceivableRow row = 1;
+}
+
+message PatientAccountsReceivableRow {
+  Patient patient = 1;
+  repeated string claim_id = 2;
+  double outstanding_copay = 3;
+  double outstanding_coinsurance = 4;
+  double outstanding_deductible = 5;
+}
+
+
+message AccountsReceivableBucket {
+  int32 start_seconds_ago = 1; // If not specified, looks back forever from end_seconds_ago
+  int32 end_seconds_ago = 2; // If not specified, assumed to be 0
+}
+
+message GetAccountsReceivableRequest {
+  repeated AccountsReceivableBucket bucket = 1;
+  // If not specified, all payers are included, otherwise, each payer gets row
+  repeated PayerId payer_filter = 2;
+}
+
+message GetAccountsReceivableResponse {
+  repeated AccountsReceivableRow row = 1;
+}
+
+message AccountsReceivableRow {
+  string payer_id = 1;
+  string payer_name = 2;
+  repeated AccountsReceivableBucketValue bucket_value = 3;
+  // Maybe add a total amount? This could be sum of buckets, or the total amount for the payer, independent of buckets requested
+}
+
+// TODO: Include currency but for now we'll just use USD
+message AccountsReceivableBucketValue {
+  AccountsReceivableBucket bucket = 1;
+  double amount = 2;
+}
+
+
+
+service ClearingHouseService {
+  // In theory this should have it's own request type that tells the clearinghouse who to callback to on completion
+  rpc submitClaim(SubmitClaimRequest) returns (ClearingHouseSubmitClaimResponse);
+}
+
+message ClearingHouseSubmitClaimResponse {
+  bool success = 1;
+}
+
+message RemittanceResponse {
+  string claim_id = 1;
+  double payer_paid_amount = 2;
+  double coinsurance_amount = 3;
+  double copay_amount = 4;
+  double deductible_amount = 5;
+  double not_allowed_amount = 6;
+}
+
+message SubmitRemittanceRequest {
+  RemittanceResponse remittance = 1;
+}
+
+message SubmitRemittanceResponse {
+  bool success = 1;
+}
+
+message SubmitClaimRequest {
+  PayerClaim claim = 1;
+}
+
+message SubmitClaimResponse {
+  SubmitClaimResult result = 1;
+}
+
+enum SubmitClaimResult {
+  SUBMIT_CLAIM_RESULT_UNSPECIFIED = 0;
+  SUBMIT_CLAIM_RESULT_SUCCESS = 1;
+  SUBMIT_CLAIM_RESULT_FAILURE = 2;
+  SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED = 3;
+}
+
+message PayerClaim {
+  string claim_id                    = 1;
+  int32 place_of_service_code        = 2;
+  Insurance insurance                = 3;
+  Patient patient                    = 4;
+  Organization organization          = 5;
+  RenderingProvider rendering_provider = 6;
+  repeated ServiceLine service_lines = 7;
+}
+
+message Address {
+  string street   = 1;
+  string city     = 2;
+  string state    = 3;
+  string zip      = 4;
+  string country  = 5;
+}
+
+message Insurance {
+  PayerId payer_id             = 1;
+  string patient_member_id     = 2;
+}
+
+// Should really have an Id
+message Patient {
+  string first_name            = 1;
+  string last_name             = 2;
+  string email                 = 3;
+  Gender gender                = 4;
+  string dob                   = 5; // YYYY-MM-DD (TODO: use structrued date)
+  Address address              = 6;
+}
+
+message Contact {
+  string first_name            = 1;
+  string last_name             = 2;
+  string phone_number          = 3;
+}
+
+message Organization {
+  string name                  = 1;
+  string billing_npi           = 2;
+  string ein                   = 3;
+  Contact contact              = 4;
+  Address address              = 5;
+}
+
+message RenderingProvider {
+  string first_name            = 1;
+  string last_name             = 2;
+  string npi                   = 3;  // 10-digit NPI
+}
+
+message ServiceLine {
+  string service_line_id       = 1;
+  string procedure_code        = 2;
+  repeated string modifiers    = 3;
+  int32 units                  = 4;
+  string details               = 5;
+  string unit_charge_currency  = 6;
+  double unit_charge_amount    = 7;
+  bool do_not_bill             = 8;
+}
+
+enum PayerId {
+  PAYER_ID_UNSPECIFIED      = 0;
+  MEDICARE                  = 1;
+  UNITED_HEALTH_GROUP       = 2;
+  ANTHEM                    = 3;
+}
+
+enum Gender {
+  GENDER_UNSPECIFIED        = 0;
+  M                         = 1;
+  F                         = 2;
+} 
