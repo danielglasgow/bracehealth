@@ -63,3 +63,9 @@ python scripts/generate_claims.py 200  claims.txt
 ```
 python submit_claims.py claims.txt --rate 1
 ```
+
+## Monitor
+
+```
+ python poll_billing_service.py --interval 5
+```
