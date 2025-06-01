@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentMap;
 import com.bracehealth.shared.Remittance;
 import com.bracehealth.shared.Patient;
 import com.bracehealth.shared.PayerClaim;
+import com.bracehealth.shared.PayerId;
 import java.util.Optional;
 import java.time.Instant;
 import java.util.Map;
@@ -34,202 +35,154 @@ import java.util.stream.Collectors;
 public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
 
     private static final Logger logger = LoggerFactory.getLogger(ClaimStore.class);
-    private static final ObjectMapper objectMapper =
-            new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
     private final Path storagePath;
-    private final ConcurrentMap<String, Claim> claims;
+    private final ConcurrentMap<String, PayerClaim> claims;
+    private final ConcurrentMap<String, PayerClaim> pendingClaims;
+    private final ConcurrentMap<String, ClaimProcessingInfo> processingInfo;
+    private final ConcurrentMap<String, Remittance> remittances;
+    private final ConcurrentMap<String, Double> patientPayments;
+    private final ConcurrentMap<Patient, ImmutableList<PayerClaim>> claimsByPatient;
+    private final ConcurrentMap<PayerId, ImmutableList<PayerClaim>> claimsByPayer;
 
-    public ClaimStore(Path storagePath, Map<String, Claim> claims) {
+    public ClaimStore(Path storagePath) {
         this.storagePath = storagePath;
-        this.claims = new ConcurrentHashMap<>(claims);
+        this.claims = new ConcurrentHashMap<>();
+        this.pendingClaims = new ConcurrentHashMap<>();
+        this.processingInfo = new ConcurrentHashMap<>();
+        this.remittances = new ConcurrentHashMap<>();
+        this.patientPayments = new ConcurrentHashMap<>();
+        this.claimsByPatient = new ConcurrentHashMap<>();
+        this.claimsByPayer = new ConcurrentHashMap<>();
     }
 
     public boolean containsClaim(String claimId) {
-        return claims.containsKey(claimId);
-    }
-
-    public void addClaim(PayerClaim claim) {
-        claims.put(claim.getClaimId(),
-                new Claim(claim, Instant.now(), ClaimStatus.PENDING, Optional.empty(), 0.0));
-    }
-
-    public void addResponse(String claimId, Remittance remittanceResponse) {
-        if (!claims.containsKey(claimId)) {
-            throw new IllegalArgumentException("Claim not found");
+        PayerClaim claim = claims.get(claimId);
+        if (claim != null) {
+            // Throw exception if claim is in invalid state
+            checkClaimExists(claim.getClaimId());
+            return true;
         }
-        claims.computeIfPresent(claimId, (id, claim) -> {
-            var clearingHouseResponse =
-                    new ClearingHouseResponse(remittanceResponse, Instant.now());
-            return claim.updateResponse(clearingHouseResponse)
-                    .updateStatus(ClaimStatus.RESPONSE_RECEIVED);
-        });
+        return false;
+    }
+
+    public void addClaim(PayerClaim claim, Instant submittedAt) {
+        checkClaimDoesNotExist(claim);
+        claims.putIfAbsent(claim.getClaimId(), claim);
+        processingInfo.putIfAbsent(claim.getClaimId(), ClaimProcessingInfo.createNew(submittedAt));
+        pendingClaims.putIfAbsent(claim.getClaimId(), claim);
+        Patient patient = claim.getPatient();
+        if (claimsByPatient.containsKey(patient)) {
+            claimsByPatient.computeIfPresent(patient, (p, claims) -> ImmutableList
+                    .<PayerClaim>builder().addAll(claims).add(claim).build());
+        } else {
+            claimsByPatient.computeIfAbsent(patient, p -> ImmutableList.of(claim));
+        }
+        PayerId payerId = claim.getInsurance().getPayerId();
+        if (claimsByPayer.containsKey(payerId)) {
+            claimsByPayer.computeIfPresent(payerId, (p, claims) -> ImmutableList
+                    .<PayerClaim>builder().addAll(claims).add(claim).build());
+        } else {
+            claimsByPayer.computeIfAbsent(payerId, p -> ImmutableList.of(claim));
+        }
+    }
+
+
+    public void addResponse(String claimId, Remittance remittance, Instant responseReceivedAt) {
+        checkClaimExists(claimId);
+        processingInfo.compute(claimId,
+                (id, info) -> info.updateOnResponseReceived(responseReceivedAt));
+        remittances.putIfAbsent(claimId, remittance);
+        pendingClaims.remove(claimId);
     }
 
     public void addPatientPayment(String claimId, double amount) {
-        if (!claims.containsKey(claimId)) {
-            throw new IllegalArgumentException("Claim not found");
+        checkClaimExists(claimId);
+        if (patientPayments.containsKey(claimId)) {
+            patientPayments.computeIfPresent(claimId, (id, payment) -> payment + amount);
+        } else {
+            patientPayments.computeIfAbsent(claimId, id -> amount);
         }
-        claims.computeIfPresent(claimId, (id, claim) -> {
-            return claim.updatePatientPayment(claim.patientPayment() + amount);
-        });
     }
 
-    public double getOutstandingPatientBalance(String claimId) {
-        if (!claims.containsKey(claimId)) {
-            throw new IllegalArgumentException("Claim not found");
-        }
-        Claim claim = claims.get(claimId);
-        if (claim.status() != ClaimStatus.RESPONSE_RECEIVED) {
-            return 0.0;
-        }
-        Optional<Remittance> remittance =
-                claim.clearingHouseResponse().map(ClearingHouseResponse::remittanceResponse);
-        double totalPatientResponsibility = remittance
-                .map(r -> r.getCopayAmount() + r.getCoinsuranceAmount() + r.getDeductibleAmount())
-                .orElse(0.0);
-        return Math.max(0.0, totalPatientResponsibility - claim.patientPayment());
+    public ClaimProcessingInfo getProcessingInfo(String claimId) {
+        return processingInfo.get(claimId);
     }
 
-    public ImmutableMap<String, Claim> getClaims() {
+    public Remittance getRemittance(String claimId) {
+        return remittances.get(claimId);
+    }
+
+    public double getPatientPayment(String claimId) {
+        return patientPayments.getOrDefault(claimId, 0.0);
+    }
+
+    public ImmutableMap<String, PayerClaim> getClaims() {
         return ImmutableMap.copyOf(claims);
     }
 
-    public ImmutableMap<String, Claim> getPendingClaims() {
-        ImmutableMap.Builder<String, Claim> builder = ImmutableMap.builder();
-        for (Map.Entry<String, Claim> entry : claims.entrySet()) {
-            if (entry.getValue().status() == ClaimStatus.PENDING) {
-                builder.put(entry.getKey(), entry.getValue());
+    public ImmutableMap<Patient, ImmutableList<PayerClaim>> getClaimsByPatient() {
+        return ImmutableMap.copyOf(claimsByPatient);
+    }
+
+    public ImmutableMap<PayerId, ImmutableList<PayerClaim>> getClaimsByPayer() {
+        return ImmutableMap.copyOf(claimsByPayer);
+    }
+
+    public record ClaimProcessingInfo(Instant submittedAt, Optional<Instant> responseReceivedAt) {
+        private static ClaimProcessingInfo createNew(Instant submittedAt) {
+            return new ClaimProcessingInfo(submittedAt, Optional.empty());
+        }
+
+        private ClaimProcessingInfo updateOnResponseReceived(Instant responseReceivedAt) {
+            return new ClaimProcessingInfo(submittedAt(), Optional.of(responseReceivedAt));
+        }
+    }
+
+    private void checkClaimExists(String claimId) {
+        if (!claims.containsKey(claimId)) {
+            throw new IllegalArgumentException("Claim not found: " + claimId);
+        }
+        if (!processingInfo.containsKey(claimId)) {
+            throw new IllegalArgumentException("Claim processing info not found: " + claimId);
+        }
+    }
+
+    private void checkClaimDoesNotExist(PayerClaim claim) {
+        Patient patient = claim.getPatient();
+        List<PayerClaim> patientClaims = claimsByPatient.getOrDefault(patient, ImmutableList.of());
+        if (patientClaims.stream().anyMatch(c -> c.getClaimId().equals(claim.getClaimId()))) {
+            throw new IllegalArgumentException("Claim already exists for patient: " + patient);
+        }
+        PayerId payerId = claim.getInsurance().getPayerId();
+        List<PayerClaim> payerClaims = claimsByPayer.getOrDefault(payerId, ImmutableList.of());
+        if (payerClaims.stream().anyMatch(c -> c.getClaimId().equals(claim.getClaimId()))) {
+            throw new IllegalArgumentException(
+                    "Claim already exists for payer: " + claim.getInsurance().getPayerId());
+        }
+        ImmutableList<ClaimMap> maps = ImmutableList.of(new ClaimMap(claims, "claims"),
+                new ClaimMap(pendingClaims, "pendingClaims"),
+                new ClaimMap(processingInfo, "processingInfo"),
+                new ClaimMap(remittances, "remittances"),
+                new ClaimMap(patientPayments, "patientPayments"));
+        for (ClaimMap map : maps) {
+            if (map.map().containsKey(claim.getClaimId())) {
+                throw new IllegalArgumentException(
+                        "Claim already exists: " + claim.getClaimId() + " in " + map.debugName());
             }
         }
-        return builder.build();
     }
 
-    public ImmutableMap<Patient, ImmutableList<Claim>> getClaimsByPatient() {
-        Map<Patient, List<Claim>> patientClaims = new HashMap<>();
-        for (Claim claim : claims.values()) {
-            Patient patient = claim.claim().getPatient();
-            if (patientClaims.containsKey(patient)) {
-                patientClaims.get(patient).add(claim);
-            } else {
-                List<Claim> claims = new ArrayList<>();
-                claims.add(claim);
-                patientClaims.put(patient, claims);
-            }
-        }
-        return ImmutableMap.copyOf(patientClaims.entrySet().stream().collect(Collectors
-                .toMap(Map.Entry::getKey, entry -> ImmutableList.copyOf(entry.getValue()))));
+    private record ClaimMap(ConcurrentMap<String, ?> map, String debugName) {
     }
 
-    @VisibleForTesting
-    void writeToDisk() {
-        try {
-            Map<String, JsonClaim> jsonClaims = claims.entrySet().stream().collect(
-                    Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().toJsonClaim()));
-            objectMapper.writeValue(storagePath.toFile(), jsonClaims);
-            logger.info("Successfully persisted claims to disk");
-        } catch (IOException e) {
-            logger.error("Failed to write claims to disk", e);
-        }
-    }
-
-    @VisibleForTesting
-    static ClaimStore newInstanceFromDisk(Path storagePath) {
-        try {
-            if (Files.exists(storagePath)) {
-                Map<String, JsonClaim> jsonClaims =
-                        objectMapper.readValue(storagePath.toFile(), objectMapper.getTypeFactory()
-                                .constructMapType(Map.class, String.class, JsonClaim.class));
-                ImmutableMap<String, Claim> claims = ImmutableMap.copyOf(
-                        jsonClaims.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
-                                entry -> Claim.fromJsonClaim(entry.getValue()))));
-                logger.info("Loaded {} claims from disk", claims.size());
-                return new ClaimStore(storagePath, claims);
-            }
-        } catch (IOException e) {
-            logger.warn("Failed to load claims from disk, starting with empty store", e);
-        }
-        return new ClaimStore(storagePath, ImmutableMap.of());
-    }
-
-    record ClearingHouseResponse(Remittance remittanceResponse, Instant receivedAt) {
-        private static ClearingHouseResponse fromJsonResponse(JsonResponse jsonResponse) {
-            return new ClearingHouseResponse(parseRemittance(jsonResponse.remittanceResponse()),
-                    Instant.parse(jsonResponse.receivedAt()));
-        }
-
-        private JsonResponse toJsonResponse() {
-            return new JsonResponse(
-                    Base64.getEncoder().encodeToString(remittanceResponse().toByteArray()),
-                    receivedAt().toString());
-        }
-    }
-
-    record Claim(PayerClaim claim, Instant submittedAt, ClaimStatus status,
-            Optional<ClearingHouseResponse> clearingHouseResponse, double patientPayment) {
-
-        private Claim updateResponse(ClearingHouseResponse clearingHouseResponse) {
-            return new Claim(claim(), submittedAt(), status(), Optional.of(clearingHouseResponse),
-                    patientPayment());
-        }
-
-        private Claim updateStatus(ClaimStatus status) {
-            return new Claim(claim(), submittedAt(), status, clearingHouseResponse(),
-                    patientPayment());
-        }
-
-        private Claim updatePatientPayment(double patientPayment) {
-            return new Claim(claim(), submittedAt(), status(), clearingHouseResponse(),
-                    patientPayment);
-        }
-
-        private JsonClaim toJsonClaim() {
-            return new JsonClaim(Base64.getEncoder().encodeToString(claim().toByteArray()),
-                    submittedAt().toString(), status().name(),
-                    clearingHouseResponse().map(ClearingHouseResponse::toJsonResponse).orElse(null),
-                    patientPayment());
-        }
-
-        private static Claim fromJsonClaim(JsonClaim jsonClaim) {
-            return new Claim(parsePayerClaim(jsonClaim.paymentClaim()),
-                    Instant.parse(jsonClaim.submittedAt()), ClaimStatus.valueOf(jsonClaim.status()),
-                    Optional.ofNullable(jsonClaim.clearingHouseResponse()).map(
-                            ClearingHouseResponse::fromJsonResponse),
-                    jsonClaim.patientPayment());
-        }
-    }
-
-    private record JsonClaim(String paymentClaim, String submittedAt, String status,
-            JsonResponse clearingHouseResponse, double patientPayment) {
-    }
-
-    private record JsonResponse(String remittanceResponse, String receivedAt) {
-    }
-
-    enum ClaimStatus {
-        PENDING, RESPONSE_RECEIVED,
-    }
-
-    private static PayerClaim parsePayerClaim(String base64) {
-        try {
-            byte[] bytes = Base64.getDecoder().decode(base64);
-            return PayerClaim.parseFrom(bytes);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to parse PayerClaim", e);
-        }
-    }
-
-    private static Remittance parseRemittance(String base64) {
-        try {
-            byte[] bytes = Base64.getDecoder().decode(base64);
-            return Remittance.parseFrom(bytes);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to parse Remittance", e);
-        }
-    }
-
+    // TODO: Implement persistence
     @Override
     public void onApplicationEvent(ContextClosedEvent event) {
-        writeToDisk();
+        // TODO: write to disk
+    }
+
+    public static ClaimStore newInstanceFromDisk(Path storagePath) {
+        throw new UnsupportedOperationException("Not implemented");
     }
 }

@@ -1,5 +1,6 @@
 package com.bracehealth.billing;
 
+import com.bracehealth.billing.ClaimStore.ClaimProcessingInfo;
 import com.bracehealth.shared.AccountsReceivableBucket;
 import com.bracehealth.shared.GetPayerAccountsReceivableRequest;
 import com.bracehealth.shared.GetPayerAccountsReceivableResponse;
@@ -76,7 +77,7 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
             return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE);
 
         }
-        claimStore.addClaim(claim);
+        claimStore.addClaim(claim, Instant.now());
         return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS);
     }
 
@@ -85,7 +86,7 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
             StreamObserver<NotifyRemittanceResponse> observer) {
         Remittance remittance = request.getRemittance();
         logger.info("Received remittance for claim ID: {}", remittance.getClaimId());
-        claimStore.addResponse(remittance.getClaimId(), remittance);
+        claimStore.addResponse(remittance.getClaimId(), remittance, Instant.now());
         observer.onNext(NotifyRemittanceResponse.newBuilder()
                 .setResult(NotifyRemittanceResult.NOTIFY_REMITTANCE_RESULT_SUCCESS).build());
         observer.onCompleted();
@@ -95,34 +96,27 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
     public void getPayerAccountsReceivable(GetPayerAccountsReceivableRequest request,
             StreamObserver<GetPayerAccountsReceivableResponse> observer) {
         // TODO: Add verification that buckets are non-overlapping
-        try {
-            logger.info("Received accounts receivable request with {} buckets",
-                    request.getBucketCount());
+        logger.info("Received accounts receivable request with {} buckets",
+                request.getBucketCount());
 
-            // TODO: This should really be cached (and an immutable data structure)
-            Map<PayerId, List<ClaimStore.Claim>> claimsByPayer =
-                    claimStore.getPendingClaims().values().stream().collect(Collectors
-                            .groupingBy(claim -> claim.claim().getInsurance().getPayerId()));
+        ImmutableMap<PayerId, ImmutableList<PayerClaim>> claimsByPayer =
+                claimStore.getClaimsByPayer();
 
-            GetPayerAccountsReceivableResponse.Builder responseBuilder =
-                    GetPayerAccountsReceivableResponse.newBuilder();
-            ImmutableList<PayerId> targetPayer = request.getPayerFilterList().size() == 0
-                    ? ImmutableList.copyOf(claimsByPayer.keySet())
-                    : ImmutableList.copyOf(request.getPayerFilterList());
-            for (PayerId payerId : targetPayer) {
-                responseBuilder.addRow(
-                        createRow(payerId, claimsByPayer.get(payerId), request.getBucketList()));
+        GetPayerAccountsReceivableResponse.Builder responseBuilder =
+                GetPayerAccountsReceivableResponse.newBuilder();
+        ImmutableList<PayerId> targetPayer = request.getPayerFilterList().size() == 0
+                ? ImmutableList.copyOf(claimsByPayer.keySet())
+                : ImmutableList.copyOf(request.getPayerFilterList());
+        for (PayerId payerId : targetPayer) {
+            responseBuilder.addRow(
+                    createRow(payerId, claimsByPayer.get(payerId), request.getBucketList()));
 
-            }
-            observer.onNext(responseBuilder.build());
-            observer.onCompleted();
-        } catch (Exception e) {
-            logger.error("Error processing accounts receivable request", e);
-            observer.onError(e);
         }
+        observer.onNext(responseBuilder.build());
+        observer.onCompleted();
     }
 
-    private AccountsReceivableRow createRow(PayerId payerId, List<ClaimStore.Claim> claims,
+    private AccountsReceivableRow createRow(PayerId payerId, List<PayerClaim> claims,
             List<AccountsReceivableBucket> buckets) {
         return AccountsReceivableRow.newBuilder().setPayerId(payerId.name())
                 .setPayerName(payerId.name())
@@ -133,8 +127,7 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
                 .build();
     }
 
-    private double calculateBucketAmount(List<ClaimStore.Claim> claims,
-            AccountsReceivableBucket bucket) {
+    private double calculateBucketAmount(List<PayerClaim> claims, AccountsReceivableBucket bucket) {
         Instant now = Instant.now();
         Instant startTime =
                 bucket.getStartSecondsAgo() > 0 ? now.minusSeconds(bucket.getStartSecondsAgo())
@@ -142,10 +135,10 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
         Instant endTime =
                 bucket.getEndSecondsAgo() > 0 ? now.minusSeconds(bucket.getEndSecondsAgo()) : now;
 
-        return claims.stream()
-                .filter(claim -> claim.submittedAt().isAfter(startTime)
-                        && claim.submittedAt().isBefore(endTime))
-                .mapToDouble(claim -> claim.claim().getServiceLinesList().stream()
+        return claims.stream().filter(claim -> claimStore.getProcessingInfo(claim.getClaimId())
+                .submittedAt().isAfter(startTime)
+                && claimStore.getProcessingInfo(claim.getClaimId()).submittedAt().isBefore(endTime))
+                .mapToDouble(claim -> claim.getServiceLinesList().stream()
                         .filter(sl -> !sl.getDoNotBill())
                         .mapToDouble(sl -> sl.getUnitChargeAmount() * sl.getUnits()).sum())
                 .sum();
@@ -157,30 +150,26 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
         try {
             logger.info("Received patient accounts receivable request");
 
-            ImmutableMap<Patient, ImmutableList<ClaimStore.Claim>> claimsByPatient =
+            ImmutableMap<Patient, ImmutableList<PayerClaim>> claimsByPatient =
                     claimStore.getClaimsByPatient();
 
             GetPatientAccountsReceivableResponse.Builder responseBuilder =
                     GetPatientAccountsReceivableResponse.newBuilder();
 
-            for (Map.Entry<Patient, ImmutableList<ClaimStore.Claim>> entry : claimsByPatient
-                    .entrySet()) {
+            for (Map.Entry<Patient, ImmutableList<PayerClaim>> entry : claimsByPatient.entrySet()) {
                 Patient patient = entry.getKey();
-                ImmutableList<ClaimStore.Claim> patientClaims = entry.getValue();
+                ImmutableList<PayerClaim> patientClaims = entry.getValue();
                 double outstandingCopay = 0.0;
                 double outstandingCoinsurance = 0.0;
                 double outstandingDeductible = 0.0;
-                for (ClaimStore.Claim claim : patientClaims) {
-                    if (claim.status() == ClaimStore.ClaimStatus.RESPONSE_RECEIVED) {
-                        Optional<Remittance> remittance = claim.clearingHouseResponse()
-                                .map(ClaimStore.ClearingHouseResponse::remittanceResponse);
-                        outstandingCopay += remittance.map(Remittance::getCopayAmount).orElse(0.0);
-                        outstandingCoinsurance +=
-                                remittance.map(Remittance::getCoinsuranceAmount).orElse(0.0);
-                        outstandingDeductible +=
-                                remittance.map(Remittance::getDeductibleAmount).orElse(0.0);
+                for (PayerClaim claim : patientClaims) {
+                    Remittance remittance = claimStore.getRemittance(claim.getClaimId());
+                    if (remittance != null) {
+                        outstandingCopay += remittance.getCopayAmount();
+                        outstandingCoinsurance += remittance.getCoinsuranceAmount();
+                        outstandingDeductible += remittance.getDeductibleAmount();
                         // VERY HACKY update of patient payments
-                        double patientPayment = claim.patientPayment();
+                        double patientPayment = claimStore.getPatientPayment(claim.getClaimId());
                         if (patientPayment > outstandingCopay) {
                             patientPayment -= outstandingCopay;
                             outstandingCopay = 0.0;
@@ -210,10 +199,8 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
                                 .setOutstandingDeductible(outstandingDeductible).build();
                 responseBuilder
                         .addRow(PatientAccountsReceivableRow.newBuilder().setPatient(patient)
-                                .setBalance(balance)
-                                .addAllClaimId(patientClaims.stream()
-                                        .map(claim -> claim.claim().getClaimId())
-                                        .collect(Collectors.toList()))
+                                .setBalance(balance).addAllClaimId(patientClaims.stream()
+                                        .map(PayerClaim::getClaimId).collect(Collectors.toList()))
                                 .build());
             }
 
@@ -242,7 +229,7 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
                 return;
             }
 
-            double outstandingBalance = claimStore.getOutstandingPatientBalance(claimId);
+            double outstandingBalance = getOutstandingPatientBalance(claimId);
             if (outstandingBalance <= 0) {
                 logger.error("No outstanding balance for claim ID {}", claimId);
                 observer.onNext(SubmitPatientPaymentResponse.newBuilder().setResult(
@@ -275,5 +262,20 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
 
     private static SubmitClaimResponse createResponse(SubmitClaimResult result) {
         return SubmitClaimResponse.newBuilder().setResult(result).build();
+    }
+
+    private double getOutstandingPatientBalance(String claimId) {
+        ClaimProcessingInfo processingInfo = claimStore.getProcessingInfo(claimId);
+        if (processingInfo.responseReceivedAt().isEmpty()) {
+            return 0.0;
+        }
+        Remittance remittance = claimStore.getRemittance(claimId);
+        if (remittance == null) {
+            throw new IllegalStateException("Remittance not found for claim ID: " + claimId);
+        }
+        double totalPatientResponsibility = remittance.getCopayAmount()
+                + remittance.getCoinsuranceAmount() + remittance.getDeductibleAmount();
+        double patientPayment = claimStore.getPatientPayment(claimId);
+        return totalPatientResponsibility - patientPayment;
     }
 }

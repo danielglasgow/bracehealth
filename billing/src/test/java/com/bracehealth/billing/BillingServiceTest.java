@@ -52,14 +52,14 @@ class BillingServiceTest {
         Instant oneMinAgo = now.minusSeconds(60);
         Instant twoMinAgo = now.minusSeconds(120);
 
-        ClaimStore.Claim claim1 = createPendingClaim(
-                getPayerClaimBuilder("C1", PayerId.MEDICARE, 100.0).build(), now);
-        ClaimStore.Claim claim2 = createPendingClaim(
-                getPayerClaimBuilder("C2", PayerId.MEDICARE, 200.0).build(), oneMinAgo);
-        ClaimStore.Claim claim3 = createPendingClaim(
-                getPayerClaimBuilder("C3", PayerId.UNITED_HEALTH_GROUP, 150.0).build(), twoMinAgo);
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"),
-                ImmutableMap.of("C1", claim1, "C2", claim2, "C3", claim3));
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
+
+        PayerClaim claim1 = getPayerClaimBuilder("C1", PayerId.MEDICARE, 100.0).build();
+        claimStore.addClaim(claim1, now);
+        PayerClaim claim2 = getPayerClaimBuilder("C2", PayerId.MEDICARE, 200.0).build();
+        claimStore.addClaim(claim2, oneMinAgo);
+        PayerClaim claim3 = getPayerClaimBuilder("C3", PayerId.UNITED_HEALTH_GROUP, 150.0).build();
+        claimStore.addClaim(claim3, twoMinAgo);
 
         GetPayerAccountsReceivableRequest request =
                 GetPayerAccountsReceivableRequest.newBuilder().addBucket(AccountsReceivableBucket
@@ -96,77 +96,70 @@ class BillingServiceTest {
         Instant threeMinAgo = now.minusSeconds(180);
         Instant fourMinAgo = now.minusSeconds(240);
 
+
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
+
         // Medicare claims in different buckets - multiple entries per bucket
-        ClaimStore.Claim medicareNow1 = createPendingClaim(
-                getPayerClaimBuilder("M1", PayerId.MEDICARE, 100.0).build(), now);
-        ClaimStore.Claim medicareNow2 = createPendingClaim(
-                getPayerClaimBuilder("M1a", PayerId.MEDICARE, 50.0).build(), thirtySecAgo);
-        ClaimStore.Claim medicareOneMin1 = createPendingClaim(
-                getPayerClaimBuilder("M2", PayerId.MEDICARE, 200.0).build(), ninetySecAgo);
-        ClaimStore.Claim medicareOneMin2 = createPendingClaim(
-                getPayerClaimBuilder("M2a", PayerId.MEDICARE, 75.0).build(), ninetySecAgo);
-        ClaimStore.Claim medicareTwoMin1 = createPendingClaim(
-                getPayerClaimBuilder("M3", PayerId.MEDICARE, 300.0).build(), twoMinAgo);
-        ClaimStore.Claim medicareTwoMin2 = createPendingClaim(
-                getPayerClaimBuilder("M3a", PayerId.MEDICARE, 125.0).build(), twoMinAgo);
-        ClaimStore.Claim medicareThreePlus1 = createPendingClaim(
-                getPayerClaimBuilder("M4", PayerId.MEDICARE, 400.0).build(), fourMinAgo);
-        ClaimStore.Claim medicareThreePlus2 = createPendingClaim(
-                getPayerClaimBuilder("M4a", PayerId.MEDICARE, 150.0).build(), threeMinAgo);
+        PayerClaim medicareNow1 = getPayerClaimBuilder("M1", PayerId.MEDICARE, 100.0).build();
+        claimStore.addClaim(medicareNow1, now);
+        PayerClaim medicareNow2 = getPayerClaimBuilder("M1a", PayerId.MEDICARE, 50.0).build();
+        claimStore.addClaim(medicareNow2, thirtySecAgo);
+        PayerClaim medicareOneMin1 = getPayerClaimBuilder("M2", PayerId.MEDICARE, 200.0).build();
+        claimStore.addClaim(medicareOneMin1, ninetySecAgo);
+        PayerClaim medicareOneMin2 = getPayerClaimBuilder("M2a", PayerId.MEDICARE, 75.0).build();
+        claimStore.addClaim(medicareOneMin2, ninetySecAgo);
+        PayerClaim medicareTwoMin1 = getPayerClaimBuilder("M3", PayerId.MEDICARE, 300.0).build();
+        claimStore.addClaim(medicareTwoMin1, twoMinAgo);
+        PayerClaim medicareTwoMin2 = getPayerClaimBuilder("M3a", PayerId.MEDICARE, 125.0).build();
+        claimStore.addClaim(medicareTwoMin2, twoMinAgo);
+        PayerClaim medicareThreePlus1 = getPayerClaimBuilder("M4", PayerId.MEDICARE, 400.0).build();
+        claimStore.addClaim(medicareThreePlus1, fourMinAgo);
+        PayerClaim medicareThreePlus2 =
+                getPayerClaimBuilder("M4a", PayerId.MEDICARE, 150.0).build();
+        claimStore.addClaim(medicareThreePlus2, threeMinAgo);
 
         // UHG claims in different buckets - multiple entries per bucket
-        ClaimStore.Claim uhgNow1 = createPendingClaim(
-                getPayerClaimBuilder("U1", PayerId.UNITED_HEALTH_GROUP, 150.0).build(), now);
-        ClaimStore.Claim uhgNow2 = createPendingClaim(
-                getPayerClaimBuilder("U1a", PayerId.UNITED_HEALTH_GROUP, 75.0).build(),
-                thirtySecAgo);
-        ClaimStore.Claim uhgOneMin1 = createPendingClaim(
-                getPayerClaimBuilder("U2", PayerId.UNITED_HEALTH_GROUP, 250.0).build(),
-                ninetySecAgo);
-        ClaimStore.Claim uhgOneMin2 = createPendingClaim(
-                getPayerClaimBuilder("U2a", PayerId.UNITED_HEALTH_GROUP, 100.0).build(),
-                ninetySecAgo);
-        ClaimStore.Claim uhgTwoMin1 = createPendingClaim(
-                getPayerClaimBuilder("U3", PayerId.UNITED_HEALTH_GROUP, 350.0).build(), twoMinAgo);
-        ClaimStore.Claim uhgTwoMin2 = createPendingClaim(
-                getPayerClaimBuilder("U3a", PayerId.UNITED_HEALTH_GROUP, 125.0).build(), twoMinAgo);
-        ClaimStore.Claim uhgThreePlus1 = createPendingClaim(
-                getPayerClaimBuilder("U4", PayerId.UNITED_HEALTH_GROUP, 450.0).build(),
-                threeMinAgo);
-        ClaimStore.Claim uhgThreePlus2 = createPendingClaim(
-                getPayerClaimBuilder("U4a", PayerId.UNITED_HEALTH_GROUP, 175.0).build(),
-                threeMinAgo);
+        PayerClaim uhgNow1 = getPayerClaimBuilder("U1", PayerId.UNITED_HEALTH_GROUP, 150.0).build();
+        claimStore.addClaim(uhgNow1, now);
+        PayerClaim uhgNow2 = getPayerClaimBuilder("U1a", PayerId.UNITED_HEALTH_GROUP, 75.0).build();
+        claimStore.addClaim(uhgNow2, thirtySecAgo);
+        PayerClaim uhgOneMin1 =
+                getPayerClaimBuilder("U2", PayerId.UNITED_HEALTH_GROUP, 250.0).build();
+        claimStore.addClaim(uhgOneMin1, ninetySecAgo);
+        PayerClaim uhgOneMin2 =
+                getPayerClaimBuilder("U2a", PayerId.UNITED_HEALTH_GROUP, 100.0).build();
+        claimStore.addClaim(uhgOneMin2, ninetySecAgo);
+        PayerClaim uhgTwoMin1 =
+                getPayerClaimBuilder("U3", PayerId.UNITED_HEALTH_GROUP, 350.0).build();
+        claimStore.addClaim(uhgTwoMin1, twoMinAgo);
+        PayerClaim uhgTwoMin2 =
+                getPayerClaimBuilder("U3a", PayerId.UNITED_HEALTH_GROUP, 125.0).build();
+        claimStore.addClaim(uhgTwoMin2, twoMinAgo);
+        PayerClaim uhgThreePlus1 =
+                getPayerClaimBuilder("U4", PayerId.UNITED_HEALTH_GROUP, 450.0).build();
+        claimStore.addClaim(uhgThreePlus1, threeMinAgo);
+        PayerClaim uhgThreePlus2 =
+                getPayerClaimBuilder("U4a", PayerId.UNITED_HEALTH_GROUP, 175.0).build();
+        claimStore.addClaim(uhgThreePlus2, threeMinAgo);
 
         // Anthem claims in different buckets - multiple entries per bucket
-        ClaimStore.Claim anthemNow1 =
-                createPendingClaim(getPayerClaimBuilder("A1", PayerId.ANTHEM, 175.0).build(), now);
-        ClaimStore.Claim anthemNow2 = createPendingClaim(
-                getPayerClaimBuilder("A1a", PayerId.ANTHEM, 85.0).build(), thirtySecAgo);
-        ClaimStore.Claim anthemOneMin1 = createPendingClaim(
-                getPayerClaimBuilder("A2", PayerId.ANTHEM, 275.0).build(), ninetySecAgo);
-        ClaimStore.Claim anthemOneMin2 = createPendingClaim(
-                getPayerClaimBuilder("A2a", PayerId.ANTHEM, 125.0).build(), ninetySecAgo);
-        ClaimStore.Claim anthemTwoMin1 = createPendingClaim(
-                getPayerClaimBuilder("A3", PayerId.ANTHEM, 375.0).build(), twoMinAgo);
-        ClaimStore.Claim anthemTwoMin2 = createPendingClaim(
-                getPayerClaimBuilder("A3a", PayerId.ANTHEM, 150.0).build(), twoMinAgo);
-        ClaimStore.Claim anthemThreePlus1 = createPendingClaim(
-                getPayerClaimBuilder("A4", PayerId.ANTHEM, 475.0).build(), threeMinAgo);
-        ClaimStore.Claim anthemThreePlus2 = createPendingClaim(
-                getPayerClaimBuilder("A4a", PayerId.ANTHEM, 200.0).build(), threeMinAgo);
+        PayerClaim anthemNow1 = getPayerClaimBuilder("A1", PayerId.ANTHEM, 175.0).build();
+        claimStore.addClaim(anthemNow1, now);
+        PayerClaim anthemNow2 = getPayerClaimBuilder("A1a", PayerId.ANTHEM, 85.0).build();
+        claimStore.addClaim(anthemNow2, thirtySecAgo);
+        PayerClaim anthemOneMin1 = getPayerClaimBuilder("A2", PayerId.ANTHEM, 275.0).build();
+        claimStore.addClaim(anthemOneMin1, ninetySecAgo);
+        PayerClaim anthemOneMin2 = getPayerClaimBuilder("A2a", PayerId.ANTHEM, 125.0).build();
+        claimStore.addClaim(anthemOneMin2, ninetySecAgo);
+        PayerClaim anthemTwoMin1 = getPayerClaimBuilder("A3", PayerId.ANTHEM, 375.0).build();
+        claimStore.addClaim(anthemTwoMin1, twoMinAgo);
+        PayerClaim anthemTwoMin2 = getPayerClaimBuilder("A3a", PayerId.ANTHEM, 150.0).build();
+        claimStore.addClaim(anthemTwoMin2, twoMinAgo);
+        PayerClaim anthemThreePlus1 = getPayerClaimBuilder("A4", PayerId.ANTHEM, 475.0).build();
+        claimStore.addClaim(anthemThreePlus1, threeMinAgo);
+        PayerClaim anthemThreePlus2 = getPayerClaimBuilder("A4a", PayerId.ANTHEM, 200.0).build();
+        claimStore.addClaim(anthemThreePlus2, threeMinAgo);
 
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"),
-                ImmutableMap.<String, ClaimStore.Claim>builder().put("M1", medicareNow1)
-                        .put("M1a", medicareNow2).put("M2", medicareOneMin1)
-                        .put("M2a", medicareOneMin2).put("M3", medicareTwoMin1)
-                        .put("M3a", medicareTwoMin2).put("M4", medicareThreePlus1)
-                        .put("M4a", medicareThreePlus2).put("U1", uhgNow1).put("U1a", uhgNow2)
-                        .put("U2", uhgOneMin1).put("U2a", uhgOneMin2).put("U3", uhgTwoMin1)
-                        .put("U3a", uhgTwoMin2).put("U4", uhgThreePlus1).put("U4a", uhgThreePlus2)
-                        .put("A1", anthemNow1).put("A1a", anthemNow2).put("A2", anthemOneMin1)
-                        .put("A2a", anthemOneMin2).put("A3", anthemTwoMin1)
-                        .put("A3a", anthemTwoMin2).put("A4", anthemThreePlus1)
-                        .put("A4a", anthemThreePlus2).build());
 
         GetPayerAccountsReceivableRequest request = GetPayerAccountsReceivableRequest.newBuilder()
                 .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(60)
@@ -227,7 +220,7 @@ class BillingServiceTest {
 
     @Test
     void submitClaim_duplicateHandling() throws Exception {
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
         PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
         SubmitClaimRequest request = SubmitClaimRequest.newBuilder().setClaim(claim).build();
 
@@ -240,29 +233,29 @@ class BillingServiceTest {
 
     @Test
     void getPatientAccountsReceivable() throws Exception {
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
 
         PayerClaim johnClaim1 =
                 getPayerClaimBuilder("C1", PayerId.MEDICARE, 100.0).setPatient(Patient.newBuilder()
                         .setFirstName("John").setLastName("Doe").setEmail("john@example.com")
                         .setGender(Gender.M).setDob("1980-01-01").build()).build();
-        claimStore.addClaim(johnClaim1);
+        claimStore.addClaim(johnClaim1, Instant.now());
         PayerClaim johnClaim2 =
                 getPayerClaimBuilder("C2", PayerId.MEDICARE, 200.0).setPatient(Patient.newBuilder()
                         .setFirstName("John").setLastName("Doe").setEmail("john@example.com")
                         .setGender(Gender.M).setDob("1980-01-01").build()).build();
-        claimStore.addClaim(johnClaim2);
+        claimStore.addClaim(johnClaim2, Instant.now());
         PayerClaim janeClaim = getPayerClaimBuilder("C3", PayerId.UNITED_HEALTH_GROUP, 150.0)
                 .setPatient(Patient.newBuilder().setFirstName("Jane").setLastName("Smith")
                         .setEmail("jane@example.com").setGender(Gender.F).setDob("1985-01-01")
                         .build())
                 .build();
-        claimStore.addClaim(janeClaim);
+        claimStore.addClaim(janeClaim, Instant.now());
 
         Remittance remittanceResponse = Remittance.newBuilder().setClaimId("C1")
                 .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
                 .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
-        claimStore.addResponse("C1", remittanceResponse);
+        claimStore.addResponse("C1", remittanceResponse, Instant.now());
 
         GetPatientAccountsReceivableResponse response =
                 executePatientAccountsReceivableRequest(claimStore);
@@ -293,39 +286,39 @@ class BillingServiceTest {
 
     @Test
     void getPatientAccountsReceivable_allResponsesReceived() throws Exception {
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
 
         PayerClaim johnClaim1 =
                 getPayerClaimBuilder("C1", PayerId.MEDICARE, 100.0).setPatient(Patient.newBuilder()
                         .setFirstName("John").setLastName("Doe").setEmail("john@example.com")
                         .setGender(Gender.M).setDob("1980-01-01").build()).build();
-        claimStore.addClaim(johnClaim1);
+        claimStore.addClaim(johnClaim1, Instant.now());
         PayerClaim johnClaim2 =
                 getPayerClaimBuilder("C2", PayerId.MEDICARE, 200.0).setPatient(Patient.newBuilder()
                         .setFirstName("John").setLastName("Doe").setEmail("john@example.com")
                         .setGender(Gender.M).setDob("1980-01-01").build()).build();
-        claimStore.addClaim(johnClaim2);
+        claimStore.addClaim(johnClaim2, Instant.now());
         PayerClaim janeClaim = getPayerClaimBuilder("C3", PayerId.UNITED_HEALTH_GROUP, 150.0)
                 .setPatient(Patient.newBuilder().setFirstName("Jane").setLastName("Smith")
                         .setEmail("jane@example.com").setGender(Gender.F).setDob("1985-01-01")
                         .build())
                 .build();
-        claimStore.addClaim(janeClaim);
+        claimStore.addClaim(janeClaim, Instant.now());
 
         Remittance remittanceResponse = Remittance.newBuilder().setClaimId("C1")
                 .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
                 .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
-        claimStore.addResponse("C1", remittanceResponse);
+        claimStore.addResponse("C1", remittanceResponse, Instant.now());
 
         remittanceResponse = Remittance.newBuilder().setClaimId("C2").setPayerPaidAmount(160.0)
                 .setCopayAmount(20.0).setCoinsuranceAmount(10.0).setDeductibleAmount(10.0)
                 .setNotAllowedAmount(0.0).build();
-        claimStore.addResponse("C2", remittanceResponse);
+        claimStore.addResponse("C2", remittanceResponse, Instant.now());
 
         remittanceResponse = Remittance.newBuilder().setClaimId("C3").setPayerPaidAmount(120.0)
                 .setCopayAmount(15.0).setCoinsuranceAmount(10.0).setDeductibleAmount(5.0)
                 .setNotAllowedAmount(0.0).build();
-        claimStore.addResponse("C3", remittanceResponse);
+        claimStore.addResponse("C3", remittanceResponse, Instant.now());
 
         GetPatientAccountsReceivableResponse response =
                 executePatientAccountsReceivableRequest(claimStore);
@@ -364,14 +357,14 @@ class BillingServiceTest {
 
     @Test
     void submitPatientPayment_success() throws Exception {
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
         PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
-        claimStore.addClaim(claim);
+        claimStore.addClaim(claim, Instant.now());
 
         Remittance remittanceResponse = Remittance.newBuilder().setClaimId("TEST1")
                 .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
                 .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
-        claimStore.addResponse("TEST1", remittanceResponse);
+        claimStore.addResponse("TEST1", remittanceResponse, Instant.now());
 
         SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
                 .setClaimId("TEST1").setAmount(15.0).build();
@@ -384,7 +377,7 @@ class BillingServiceTest {
 
     @Test
     void submitPatientPayment_claimNotFound() throws Exception {
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
         SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
                 .setClaimId("NONEXISTENT").setAmount(15.0).build();
 
@@ -396,9 +389,9 @@ class BillingServiceTest {
 
     @Test
     void submitPatientPayment_noOutstandingBalance() throws Exception {
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
         PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
-        claimStore.addClaim(claim);
+        claimStore.addClaim(claim, Instant.now());
 
         // No remittance response means no patient responsibility
         SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
@@ -412,14 +405,14 @@ class BillingServiceTest {
 
     @Test
     void submitPatientPayment_amountExceedsBalance() throws Exception {
-        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"), ImmutableMap.of());
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
         PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
-        claimStore.addClaim(claim);
+        claimStore.addClaim(claim, Instant.now());
 
         Remittance remittanceResponse = Remittance.newBuilder().setClaimId("TEST1")
                 .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
                 .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
-        claimStore.addResponse("TEST1", remittanceResponse);
+        claimStore.addResponse("TEST1", remittanceResponse, Instant.now());
 
         SubmitPatientPaymentRequest request =
                 SubmitPatientPaymentRequest.newBuilder().setClaimId("TEST1").setAmount(25.0) // Total
@@ -539,11 +532,6 @@ class BillingServiceTest {
                 });
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
         return responseHolder[0];
-    }
-
-    private static ClaimStore.Claim createPendingClaim(PayerClaim claim, Instant submittedAt) {
-        return new ClaimStore.Claim(claim, submittedAt, ClaimStore.ClaimStatus.PENDING,
-                Optional.empty(), 0.0);
     }
 
     private static PayerClaim.Builder getPayerClaimBuilder(String claimId, PayerId payerId,

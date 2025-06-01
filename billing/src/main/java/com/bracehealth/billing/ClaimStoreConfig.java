@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import java.nio.file.Paths;
-import java.util.HashMap;
 
 
 /**
@@ -29,6 +28,6 @@ public class ClaimStoreConfig {
     @Primary
     @ConditionalOnProperty(name = "claimstore.mode", havingValue = "new", matchIfMissing = true)
     public ClaimStore claimStoreNew() {
-        return new ClaimStore(Paths.get("claims.json"), new HashMap<>());
+        return new ClaimStore(Paths.get("claims.json"));
     }
 }
