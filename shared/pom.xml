@@ -64,6 +64,9 @@
 
                 <configuration>
                     <protoSourceRoot>${project.basedir}/proto</protoSourceRoot>
+                    <includes>
+                        <include>**/*.proto</include>
+                    </includes>
 
                     <protocArtifact>
                         com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}
