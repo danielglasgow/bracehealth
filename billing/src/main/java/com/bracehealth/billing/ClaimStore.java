@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.event.ContextClosedEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.ArrayList;
@@ -19,6 +21,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.nio.file.Files;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.util.stream.Collectors;
@@ -28,7 +31,7 @@ import java.util.stream.Collectors;
  * 
  * On application shutdown, the claims are persisted to disk
  */
-public class ClaimStore {
+public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
 
     private static final Logger logger = LoggerFactory.getLogger(ClaimStore.class);
     private static final ObjectMapper objectMapper =
@@ -118,7 +121,8 @@ public class ClaimStore {
                 .toMap(Map.Entry::getKey, entry -> ImmutableList.copyOf(entry.getValue()))));
     }
 
-    public void writeToDisk() {
+    @VisibleForTesting
+    void writeToDisk() {
         try {
             Map<String, JsonClaim> jsonClaims = claims.entrySet().stream().collect(
                     Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().toJsonClaim()));
@@ -129,7 +133,8 @@ public class ClaimStore {
         }
     }
 
-    public static ClaimStore newInstanceFromDisk(Path storagePath) {
+    @VisibleForTesting
+    static ClaimStore newInstanceFromDisk(Path storagePath) {
         try {
             if (Files.exists(storagePath)) {
                 Map<String, JsonClaim> jsonClaims =
@@ -221,5 +226,10 @@ public class ClaimStore {
         } catch (IOException e) {
             throw new RuntimeException("Failed to parse Remittance", e);
         }
+    }
+
+    @Override
+    public void onApplicationEvent(ContextClosedEvent event) {
+        writeToDisk();
     }
 }

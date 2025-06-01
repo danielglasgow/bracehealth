@@ -57,7 +57,6 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
     }
 
     private SubmitClaimResponse submitClaimInternal(PayerClaim claim) {
-        PayerClaim claim = request.getClaim();
         logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
         if (claimStore.containsClaim(claim.getClaimId())) {
             logger.error("Claim with ID {} already exists", claim.getClaimId());

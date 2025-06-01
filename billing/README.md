@@ -4,6 +4,12 @@
 mvn spring-boot:run
 ```
 
+Or to use "real" client:
+
+```
+mvn spring-boot:run -Dspring-boot.run.arguments="--clearinghouse.mode=noop"
+```
+
 # Compile
 
 ```
