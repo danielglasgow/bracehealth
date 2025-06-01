@@ -2,7 +2,7 @@ package com.bracehealth.billing;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import com.bracehealth.shared.RemittanceResponse;
+import com.bracehealth.shared.Remittance;
 import com.bracehealth.shared.Patient;
 import com.bracehealth.shared.PayerClaim;
 import java.util.Optional;
@@ -51,7 +51,7 @@ public class ClaimStore {
                 new Claim(claim, Instant.now(), ClaimStatus.PENDING, Optional.empty(), 0.0));
     }
 
-    public void addResponse(String claimId, RemittanceResponse remittanceResponse) {
+    public void addResponse(String claimId, Remittance remittanceResponse) {
         if (!claims.containsKey(claimId)) {
             throw new IllegalArgumentException("Claim not found");
         }
@@ -80,7 +80,7 @@ public class ClaimStore {
         if (claim.status() != ClaimStatus.RESPONSE_RECEIVED) {
             return 0.0;
         }
-        Optional<RemittanceResponse> remittance =
+        Optional<Remittance> remittance =
                 claim.clearingHouseResponse().map(ClearingHouseResponse::remittanceResponse);
         double totalPatientResponsibility = remittance
                 .map(r -> r.getCopayAmount() + r.getCoinsuranceAmount() + r.getDeductibleAmount())
@@ -147,10 +147,9 @@ public class ClaimStore {
         return new ClaimStore(storagePath, ImmutableMap.of());
     }
 
-    record ClearingHouseResponse(RemittanceResponse remittanceResponse, Instant receivedAt) {
+    record ClearingHouseResponse(Remittance remittanceResponse, Instant receivedAt) {
         private static ClearingHouseResponse fromJsonResponse(JsonResponse jsonResponse) {
-            return new ClearingHouseResponse(
-                    parseRemittanceResponse(jsonResponse.remittanceResponse()),
+            return new ClearingHouseResponse(parseRemittance(jsonResponse.remittanceResponse()),
                     Instant.parse(jsonResponse.receivedAt()));
         }
 
@@ -215,12 +214,12 @@ public class ClaimStore {
         }
     }
 
-    private static RemittanceResponse parseRemittanceResponse(String base64) {
+    private static Remittance parseRemittance(String base64) {
         try {
             byte[] bytes = Base64.getDecoder().decode(base64);
-            return RemittanceResponse.parseFrom(bytes);
+            return Remittance.parseFrom(bytes);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to parse RemittanceResponse", e);
+            throw new RuntimeException("Failed to parse Remittance", e);
         }
     }
 }

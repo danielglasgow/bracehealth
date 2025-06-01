@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package com.bracehealth.shared;
+
+option java_multiple_files = true;
+option java_package = "com.bracehealth.shared";
+
+/**
+ * A remittance is a response from the clearinghouse to the billing service.
+ * It contains the amount of money that the payer has paid for the claim.
+ * It is used to update the patient's outstanding balance.
+ */
+ message Remittance {
+    string claim_id = 1;
+    double payer_paid_amount = 2;
+    double coinsurance_amount = 3;
+    double copay_amount = 4;
+    double deductible_amount = 5;
+    double not_allowed_amount = 6;
+  }

@@ -1,6 +1,30 @@
 package com.bracehealth.billing;
 
-import com.bracehealth.shared.*;
+import com.bracehealth.shared.AccountsReceivableBucket;
+import com.bracehealth.shared.GetPayerAccountsReceivableRequest;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableRow;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableBucketValue;
+import com.bracehealth.shared.GetPatientAccountsReceivableRequest;
+import com.bracehealth.shared.GetPatientAccountsReceivableResponse;
+import com.bracehealth.shared.GetPatientAccountsReceivableResponse.PatientAccountsReceivableRow;
+import com.bracehealth.shared.NotifyRemittanceRequest;
+import com.bracehealth.shared.Remittance;
+import com.bracehealth.shared.NotifyRemittanceResponse;
+import com.bracehealth.shared.NotifyRemittanceResponse.NotifyRemittanceResult;
+import com.bracehealth.shared.PatientBalance;
+import com.bracehealth.shared.Patient;
+import com.bracehealth.shared.SubmitPatientPaymentRequest;
+import com.bracehealth.shared.SubmitPatientPaymentResponse;
+import com.bracehealth.shared.SubmitPatientPaymentResponse.SubmitPatientPaymentResult;
+import com.bracehealth.shared.SubmitClaimRequest;
+import com.bracehealth.shared.SubmitClaimResponse;
+import com.bracehealth.shared.SubmitClaimResponse.SubmitClaimResult;
+import com.bracehealth.shared.ProcessClaimRequest;
+import com.bracehealth.shared.ProcessClaimResponse;
+import com.bracehealth.shared.PayerClaim;
+import com.bracehealth.shared.PayerId;
+import com.bracehealth.shared.BillingServiceGrpc;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
@@ -40,8 +64,8 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
 
 
             try {
-                ClearingHouseSubmitClaimResponse clearingHouseResponse =
-                        clearingHouseClient.submitClaim(request);
+                ProcessClaimResponse clearingHouseResponse = clearingHouseClient
+                        .processClaim(ProcessClaimRequest.newBuilder().setClaim(claim).build());
                 if (!clearingHouseResponse.getSuccess()) {
                     logger.error("Failed to submit claim {} to clearinghouse", claim.getClaimId());
                     responseObserver
@@ -68,13 +92,14 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
     }
 
     @Override
-    public void submitRemittance(SubmitRemittanceRequest request,
-            StreamObserver<SubmitRemittanceResponse> responseObserver) {
+    public void notifyRemittance(NotifyRemittanceRequest request,
+            StreamObserver<NotifyRemittanceResponse> responseObserver) {
         try {
-            RemittanceResponse remittance = request.getRemittance();
+            Remittance remittance = request.getRemittance();
             logger.info("Received remittance for claim ID: {}", remittance.getClaimId());
             claimStore.addResponse(remittance.getClaimId(), remittance);
-            responseObserver.onNext(SubmitRemittanceResponse.newBuilder().setSuccess(true).build());
+            responseObserver.onNext(NotifyRemittanceResponse.newBuilder()
+                    .setResult(NotifyRemittanceResult.NOTIFY_REMITTANCE_RESULT_SUCCESS).build());
             responseObserver.onCompleted();
         } catch (Exception e) {
             logger.error("Error processing remittance", e);
@@ -83,8 +108,8 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
     }
 
     @Override
-    public void getAccountsReceivable(GetAccountsReceivableRequest request,
-            StreamObserver<GetAccountsReceivableResponse> responseObserver) {
+    public void getPayerAccountsReceivable(GetPayerAccountsReceivableRequest request,
+            StreamObserver<GetPayerAccountsReceivableResponse> responseObserver) {
         // TODO: Add verification that buckets are non-overlapping
         try {
             logger.info("Received accounts receivable request with {} buckets",
@@ -95,8 +120,8 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                     claimStore.getPendingClaims().values().stream().collect(Collectors
                             .groupingBy(claim -> claim.claim().getInsurance().getPayerId()));
 
-            GetAccountsReceivableResponse.Builder responseBuilder =
-                    GetAccountsReceivableResponse.newBuilder();
+            GetPayerAccountsReceivableResponse.Builder responseBuilder =
+                    GetPayerAccountsReceivableResponse.newBuilder();
             ImmutableList<PayerId> targetPayer = request.getPayerFilterList().size() == 0
                     ? ImmutableList.copyOf(claimsByPayer.keySet())
                     : ImmutableList.copyOf(request.getPayerFilterList());
@@ -163,14 +188,13 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                 double outstandingDeductible = 0.0;
                 for (ClaimStore.Claim claim : patientClaims) {
                     if (claim.status() == ClaimStore.ClaimStatus.RESPONSE_RECEIVED) {
-                        Optional<RemittanceResponse> remittance = claim.clearingHouseResponse()
+                        Optional<Remittance> remittance = claim.clearingHouseResponse()
                                 .map(ClaimStore.ClearingHouseResponse::remittanceResponse);
-                        outstandingCopay +=
-                                remittance.map(RemittanceResponse::getCopayAmount).orElse(0.0);
-                        outstandingCoinsurance += remittance
-                                .map(RemittanceResponse::getCoinsuranceAmount).orElse(0.0);
+                        outstandingCopay += remittance.map(Remittance::getCopayAmount).orElse(0.0);
+                        outstandingCoinsurance +=
+                                remittance.map(Remittance::getCoinsuranceAmount).orElse(0.0);
                         outstandingDeductible +=
-                                remittance.map(RemittanceResponse::getDeductibleAmount).orElse(0.0);
+                                remittance.map(Remittance::getDeductibleAmount).orElse(0.0);
                         // VERY HACKY update of patient payments
                         double patientPayment = claim.patientPayment();
                         if (patientPayment > outstandingCopay) {
@@ -196,11 +220,13 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                         }
                     }
                 }
+                PatientBalance balance =
+                        PatientBalance.newBuilder().setOutstandingCopay(outstandingCopay)
+                                .setOutstandingCoinsurance(outstandingCoinsurance)
+                                .setOutstandingDeductible(outstandingDeductible).build();
                 responseBuilder
                         .addRow(PatientAccountsReceivableRow.newBuilder().setPatient(patient)
-                                .setOutstandingCopay(outstandingCopay)
-                                .setOutstandingCoinsurance(outstandingCoinsurance)
-                                .setOutstandingDeductible(outstandingDeductible)
+                                .setBalance(balance)
                                 .addAllClaimId(patientClaims.stream()
                                         .map(claim -> claim.claim().getClaimId())
                                         .collect(Collectors.toList()))

@@ -2,25 +2,44 @@ package com.bracehealth.billing;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+
+import com.bracehealth.shared.AccountsReceivableBucket;
+import com.bracehealth.shared.GetPayerAccountsReceivableRequest;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableRow;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableBucketValue;
+import com.bracehealth.shared.GetPatientAccountsReceivableRequest;
+import com.bracehealth.shared.GetPatientAccountsReceivableResponse;
+import com.bracehealth.shared.GetPatientAccountsReceivableResponse.PatientAccountsReceivableRow;
+import com.bracehealth.shared.NotifyRemittanceRequest;
+import com.bracehealth.shared.Remittance;
+import com.bracehealth.shared.PatientBalance;
+import com.bracehealth.shared.Patient;
+import com.bracehealth.shared.SubmitPatientPaymentRequest;
+import com.bracehealth.shared.SubmitPatientPaymentResponse;
+import com.bracehealth.shared.SubmitPatientPaymentResponse.SubmitPatientPaymentResult;
+import com.bracehealth.shared.SubmitClaimRequest;
+import com.bracehealth.shared.SubmitClaimResponse;
+import com.bracehealth.shared.SubmitClaimResponse.SubmitClaimResult;
+import com.bracehealth.shared.ProcessClaimRequest;
+import com.bracehealth.shared.ProcessClaimResponse;
+import com.bracehealth.shared.PayerClaim;
+import com.bracehealth.shared.ServiceLine;
+import com.bracehealth.shared.PayerId;
+import com.bracehealth.shared.Insurance;
+import com.bracehealth.shared.Gender;
+import com.bracehealth.shared.Address;
+import com.bracehealth.shared.Contact;
+import com.bracehealth.shared.Organization;
+import com.bracehealth.shared.RenderingProvider;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import com.bracehealth.shared.PayerClaim;
-import com.bracehealth.shared.RemittanceResponse;
-import com.bracehealth.shared.Insurance;
-import com.bracehealth.shared.Patient;
-import com.bracehealth.shared.Organization;
-import com.bracehealth.shared.RenderingProvider;
-import com.bracehealth.shared.ServiceLine;
-import com.google.common.collect.ImmutableMap;
-import com.bracehealth.shared.Address;
-import com.bracehealth.shared.Contact;
-import com.bracehealth.shared.PayerId;
-import com.bracehealth.shared.Gender;
 import java.util.stream.Stream;
+import com.google.common.collect.ImmutableMap;
 
 class ClaimStoreTest {
     private static final Path TEST_DIR = Paths.get("test_data");
@@ -59,9 +78,9 @@ class ClaimStoreTest {
         ClaimStore claimStore =
                 new ClaimStore(TEST_DIR.resolve("completed_claims.json"), ImmutableMap.of());
         PayerClaim payerClaim = createPayerClaim("C1");
-        RemittanceResponse remittanceResponse = createRemittanceResponse();
+        Remittance remittance = createRemittance();
         claimStore.addClaim(payerClaim);
-        claimStore.addResponse("C1", remittanceResponse);
+        claimStore.addResponse("C1", remittance);
         claimStore.writeToDisk();
 
         Path claimsFile = TEST_DIR.resolve("completed_claims.json");
@@ -75,8 +94,8 @@ class ClaimStoreTest {
         PayerClaim payerClaim2 = createPayerClaim("C2");
         claimStore.addClaim(payerClaim1);
         claimStore.addClaim(payerClaim2);
-        RemittanceResponse remittanceResponse = createRemittanceResponse();
-        claimStore.addResponse("C1", remittanceResponse);
+        Remittance remittance = createRemittance();
+        claimStore.addResponse("C1", remittance);
         claimStore.writeToDisk();
 
         ClaimStore newClaimStore = ClaimStore.newInstanceFromDisk(TEST_DIR.resolve("claims.json"));
@@ -117,8 +136,8 @@ class ClaimStoreTest {
 
 
 
-    private static RemittanceResponse createRemittanceResponse() {
-        return RemittanceResponse.newBuilder().setClaimId("CLM1234567").setPayerPaidAmount(125.0)
+    private static Remittance createRemittance() {
+        return Remittance.newBuilder().setClaimId("CLM1234567").setPayerPaidAmount(125.0)
                 .setCoinsuranceAmount(25.0).setCopayAmount(0.0).setDeductibleAmount(0.0)
                 .setNotAllowedAmount(0.0).build();
 

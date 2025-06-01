@@ -12,14 +12,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import com.bracehealth.shared.ClearingHouseServiceGrpc;
-import com.bracehealth.shared.SubmitClaimRequest;
-import com.bracehealth.shared.ClearingHouseSubmitClaimResponse;
+import com.bracehealth.shared.ProcessClaimRequest;
+import com.bracehealth.shared.ProcessClaimResponse;
 import com.bracehealth.shared.PayerId;
 import com.bracehealth.shared.BillingServiceGrpc;
 import com.bracehealth.shared.PayerClaim;
-import com.bracehealth.shared.RemittanceResponse;
-import com.bracehealth.shared.SubmitRemittanceRequest;
-import com.bracehealth.shared.SubmitRemittanceResponse;
+import com.bracehealth.shared.NotifyRemittanceRequest;
+import com.bracehealth.shared.Remittance;
+import com.bracehealth.shared.NotifyRemittanceResponse;
+import com.bracehealth.shared.NotifyRemittanceResponse.NotifyRemittanceResult;
 import com.bracehealth.shared.ServiceLine;
 
 @GrpcService
@@ -44,8 +45,8 @@ public class ClearingHouseServiceImpl
                     .maxResponseTimeSeconds(10).build());
 
     @Override
-    public void submitClaim(SubmitClaimRequest request,
-            StreamObserver<ClearingHouseSubmitClaimResponse> responseObserver) {
+    public void processClaim(ProcessClaimRequest request,
+            StreamObserver<ProcessClaimResponse> responseObserver) {
         try {
             PayerClaim claim = request.getClaim();
             logger.info("Received claim submission for claim ID: {} to payer: {}",
@@ -53,8 +54,8 @@ public class ClearingHouseServiceImpl
             PayerConfig payerConfig = payerConfigs.get(claim.getInsurance().getPayerId());
             if (payerConfig == null) {
                 logger.error("Payer {} not supported", claim.getInsurance().getPayerId());
-                ClearingHouseSubmitClaimResponse response =
-                        ClearingHouseSubmitClaimResponse.newBuilder().setSuccess(false).build();
+                ProcessClaimResponse response =
+                        ProcessClaimResponse.newBuilder().setSuccess(false).build();
                 responseObserver.onNext(response);
                 responseObserver.onCompleted();
                 return;
@@ -62,8 +63,8 @@ public class ClearingHouseServiceImpl
 
             submitToMockWorkQueue(claim, payerConfig);
 
-            ClearingHouseSubmitClaimResponse response =
-                    ClearingHouseSubmitClaimResponse.newBuilder().setSuccess(true).build();
+            ProcessClaimResponse response =
+                    ProcessClaimResponse.newBuilder().setSuccess(true).build();
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (Exception e) {
@@ -84,15 +85,16 @@ public class ClearingHouseServiceImpl
             logger.info("Processing claim {} after {} second delay", claim.getClaimId(),
                     delaySeconds);
             try {
-                RemittanceResponse response = generateRandomRemittanceResponse(claim);
+                Remittance remittance = generateRandomRemittance(claim);
 
-                logger.info("Submitting remittance {}", response.getClaimId());
-                SubmitRemittanceRequest request =
-                        SubmitRemittanceRequest.newBuilder().setRemittance(response).build();
-                SubmitRemittanceResponse remittanceResponse =
-                        billingService.submitRemittance(request);
-                if (!remittanceResponse.getSuccess()) {
-                    logger.error("Failed to submit remittance for claim {}", claim.getClaimId());
+                logger.info("Submitting remittance {}", remittance.getClaimId());
+                NotifyRemittanceRequest request =
+                        NotifyRemittanceRequest.newBuilder().setRemittance(remittance).build();
+                NotifyRemittanceResponse response = billingService.notifyRemittance(request);
+                if (response
+                        .getResult() != NotifyRemittanceResult.NOTIFY_REMITTANCE_RESULT_SUCCESS) {
+                    logger.error("Failed to submit remittance for claim {}. Result: {}",
+                            claim.getClaimId(), response.getResult());
                 } else {
                     logger.info("Successfully submitted remittance for claim {}",
                             claim.getClaimId());
@@ -103,9 +105,8 @@ public class ClearingHouseServiceImpl
         }, delaySeconds, TimeUnit.SECONDS);
     }
 
-    private static RemittanceResponse generateRandomRemittanceResponse(PayerClaim claim) {
-        RemittanceResponse.Builder response =
-                RemittanceResponse.newBuilder().setClaimId(claim.getClaimId());
+    private static Remittance generateRandomRemittance(PayerClaim claim) {
+        Remittance.Builder response = Remittance.newBuilder().setClaimId(claim.getClaimId());
         double totalAmountOwed = 0.0;
         for (ServiceLine serviceLine : claim.getServiceLinesList()) {
             // TODO: Handle currency

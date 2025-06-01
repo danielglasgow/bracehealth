@@ -2,6 +2,31 @@ package com.bracehealth.billing;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.bracehealth.shared.AccountsReceivableBucket;
+import com.bracehealth.shared.GetPayerAccountsReceivableRequest;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableRow;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableBucketValue;
+import com.bracehealth.shared.GetPatientAccountsReceivableRequest;
+import com.bracehealth.shared.GetPatientAccountsReceivableResponse;
+import com.bracehealth.shared.GetPatientAccountsReceivableResponse.PatientAccountsReceivableRow;
+import com.bracehealth.shared.NotifyRemittanceRequest;
+import com.bracehealth.shared.Remittance;
+import com.bracehealth.shared.PatientBalance;
+import com.bracehealth.shared.Patient;
+import com.bracehealth.shared.SubmitPatientPaymentRequest;
+import com.bracehealth.shared.SubmitPatientPaymentResponse;
+import com.bracehealth.shared.SubmitPatientPaymentResponse.SubmitPatientPaymentResult;
+import com.bracehealth.shared.SubmitClaimRequest;
+import com.bracehealth.shared.SubmitClaimResponse;
+import com.bracehealth.shared.SubmitClaimResponse.SubmitClaimResult;
+import com.bracehealth.shared.ProcessClaimRequest;
+import com.bracehealth.shared.ProcessClaimResponse;
+import com.bracehealth.shared.PayerClaim;
+import com.bracehealth.shared.PayerId;
+import com.bracehealth.shared.ServiceLine;
+import com.bracehealth.shared.Insurance;
+import com.bracehealth.shared.Gender;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
@@ -11,7 +36,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import com.bracehealth.shared.*;
 import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
 
@@ -37,11 +61,11 @@ class BillingServiceImplTest {
         ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"),
                 ImmutableMap.of("C1", claim1, "C2", claim2, "C3", claim3));
 
-        GetAccountsReceivableRequest request =
-                GetAccountsReceivableRequest.newBuilder().addBucket(AccountsReceivableBucket
+        GetPayerAccountsReceivableRequest request =
+                GetPayerAccountsReceivableRequest.newBuilder().addBucket(AccountsReceivableBucket
                         .newBuilder().setStartSecondsAgo(180).setEndSecondsAgo(0).build()).build();
 
-        GetAccountsReceivableResponse response = executeRequest(claimStore, request);
+        GetPayerAccountsReceivableResponse response = executeRequest(claimStore, request);
 
         assertEquals(2, response.getRowCount(), "Should have 2 rows (one per payer)");
 
@@ -144,7 +168,7 @@ class BillingServiceImplTest {
                         .put("A3a", anthemTwoMin2).put("A4", anthemThreePlus1)
                         .put("A4a", anthemThreePlus2).build());
 
-        GetAccountsReceivableRequest request = GetAccountsReceivableRequest.newBuilder()
+        GetPayerAccountsReceivableRequest request = GetPayerAccountsReceivableRequest.newBuilder()
                 .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(60)
                         .setEndSecondsAgo(0).build())
                 .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(120)
@@ -154,7 +178,7 @@ class BillingServiceImplTest {
                 .addBucket(AccountsReceivableBucket.newBuilder().setEndSecondsAgo(180).build())
                 .build();
 
-        GetAccountsReceivableResponse response = executeRequest(claimStore, request);
+        GetPayerAccountsReceivableResponse response = executeRequest(claimStore, request);
 
         assertEquals(3, response.getRowCount(), "Should have 3 rows (one per payer)");
 
@@ -235,7 +259,7 @@ class BillingServiceImplTest {
                 .build();
         claimStore.addClaim(janeClaim);
 
-        RemittanceResponse remittanceResponse = RemittanceResponse.newBuilder().setClaimId("C1")
+        Remittance remittanceResponse = Remittance.newBuilder().setClaimId("C1")
                 .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
                 .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
         claimStore.addResponse("C1", remittanceResponse);
@@ -249,19 +273,21 @@ class BillingServiceImplTest {
                         .filter(row -> row.getPatient().getFirstName().equals("John")
                                 && row.getPatient().getLastName().equals("Doe"))
                         .findFirst().orElseThrow();
-        assertEquals(10.0, johnRow.getOutstandingCopay(), 0.001, "John's copay should be 10.0");
-        assertEquals(5.0, johnRow.getOutstandingCoinsurance(), 0.001,
+        assertEquals(10.0, johnRow.getBalance().getOutstandingCopay(), 0.001,
+                "John's copay should be 10.0");
+        assertEquals(5.0, johnRow.getBalance().getOutstandingCoinsurance(), 0.001,
                 "John's coinsurance should be 5.0");
-        assertEquals(5.0, johnRow.getOutstandingDeductible(), 0.001,
+        assertEquals(5.0, johnRow.getBalance().getOutstandingDeductible(), 0.001,
                 "John's deductible should be 5.0");
         PatientAccountsReceivableRow janeRow = response.getRowList().stream()
                 .filter(row -> row.getPatient().getFirstName().equals("Jane")
                         && row.getPatient().getLastName().equals("Smith"))
                 .findFirst().orElseThrow();
-        assertEquals(0.0, janeRow.getOutstandingCopay(), 0.001, "Jane's copay should be 0.0");
-        assertEquals(0.0, janeRow.getOutstandingCoinsurance(), 0.001,
+        assertEquals(0.0, janeRow.getBalance().getOutstandingCopay(), 0.001,
+                "Jane's copay should be 0.0");
+        assertEquals(0.0, janeRow.getBalance().getOutstandingCoinsurance(), 0.001,
                 "Jane's coinsurance should be 0.0");
-        assertEquals(0.0, janeRow.getOutstandingDeductible(), 0.001,
+        assertEquals(0.0, janeRow.getBalance().getOutstandingDeductible(), 0.001,
                 "Jane's deductible should be 0.0");
     }
 
@@ -286,19 +312,19 @@ class BillingServiceImplTest {
                 .build();
         claimStore.addClaim(janeClaim);
 
-        RemittanceResponse remittanceResponse = RemittanceResponse.newBuilder().setClaimId("C1")
+        Remittance remittanceResponse = Remittance.newBuilder().setClaimId("C1")
                 .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
                 .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
         claimStore.addResponse("C1", remittanceResponse);
 
-        remittanceResponse = RemittanceResponse.newBuilder().setClaimId("C2")
-                .setPayerPaidAmount(160.0).setCopayAmount(20.0).setCoinsuranceAmount(10.0)
-                .setDeductibleAmount(10.0).setNotAllowedAmount(0.0).build();
+        remittanceResponse = Remittance.newBuilder().setClaimId("C2").setPayerPaidAmount(160.0)
+                .setCopayAmount(20.0).setCoinsuranceAmount(10.0).setDeductibleAmount(10.0)
+                .setNotAllowedAmount(0.0).build();
         claimStore.addResponse("C2", remittanceResponse);
 
-        remittanceResponse = RemittanceResponse.newBuilder().setClaimId("C3")
-                .setPayerPaidAmount(120.0).setCopayAmount(15.0).setCoinsuranceAmount(10.0)
-                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+        remittanceResponse = Remittance.newBuilder().setClaimId("C3").setPayerPaidAmount(120.0)
+                .setCopayAmount(15.0).setCoinsuranceAmount(10.0).setDeductibleAmount(5.0)
+                .setNotAllowedAmount(0.0).build();
         claimStore.addResponse("C3", remittanceResponse);
 
         GetPatientAccountsReceivableResponse response =
@@ -315,11 +341,11 @@ class BillingServiceImplTest {
                         .filter(row -> row.getPatient().getFirstName().equals("John")
                                 && row.getPatient().getLastName().equals("Doe"))
                         .findFirst().orElseThrow();
-        assertEquals(30.0, johnRow.getOutstandingCopay(), 0.001,
+        assertEquals(30.0, johnRow.getBalance().getOutstandingCopay(), 0.001,
                 "John's copay should be 30.0 (10.0 + 20.0)");
-        assertEquals(15.0, johnRow.getOutstandingCoinsurance(), 0.001,
+        assertEquals(15.0, johnRow.getBalance().getOutstandingCoinsurance(), 0.001,
                 "John's coinsurance should be 15.0 (5.0 + 10.0)");
-        assertEquals(15.0, johnRow.getOutstandingDeductible(), 0.001,
+        assertEquals(15.0, johnRow.getBalance().getOutstandingDeductible(), 0.001,
                 "John's deductible should be 15.0 (5.0 + 10.0)");
 
         // For Jane:
@@ -328,10 +354,11 @@ class BillingServiceImplTest {
                 .filter(row -> row.getPatient().getFirstName().equals("Jane")
                         && row.getPatient().getLastName().equals("Smith"))
                 .findFirst().orElseThrow();
-        assertEquals(15.0, janeRow.getOutstandingCopay(), 0.001, "Jane's copay should be 15.0");
-        assertEquals(10.0, janeRow.getOutstandingCoinsurance(), 0.001,
+        assertEquals(15.0, janeRow.getBalance().getOutstandingCopay(), 0.001,
+                "Jane's copay should be 15.0");
+        assertEquals(10.0, janeRow.getBalance().getOutstandingCoinsurance(), 0.001,
                 "Jane's coinsurance should be 10.0");
-        assertEquals(5.0, janeRow.getOutstandingDeductible(), 0.001,
+        assertEquals(5.0, janeRow.getBalance().getOutstandingDeductible(), 0.001,
                 "Jane's deductible should be 5.0");
     }
 
@@ -341,7 +368,7 @@ class BillingServiceImplTest {
         PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
         claimStore.addClaim(claim);
 
-        RemittanceResponse remittanceResponse = RemittanceResponse.newBuilder().setClaimId("TEST1")
+        Remittance remittanceResponse = Remittance.newBuilder().setClaimId("TEST1")
                 .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
                 .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
         claimStore.addResponse("TEST1", remittanceResponse);
@@ -389,7 +416,7 @@ class BillingServiceImplTest {
         PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.MEDICARE, 100.0).build();
         claimStore.addClaim(claim);
 
-        RemittanceResponse remittanceResponse = RemittanceResponse.newBuilder().setClaimId("TEST1")
+        Remittance remittanceResponse = Remittance.newBuilder().setClaimId("TEST1")
                 .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
                 .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
         claimStore.addResponse("TEST1", remittanceResponse);
@@ -408,15 +435,16 @@ class BillingServiceImplTest {
                 response.getResult());
     }
 
-    private GetAccountsReceivableResponse executeRequest(ClaimStore claimStore,
-            GetAccountsReceivableRequest request) throws Exception {
+    private GetPayerAccountsReceivableResponse executeRequest(ClaimStore claimStore,
+            GetPayerAccountsReceivableRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
-        GetAccountsReceivableResponse[] responseHolder = new GetAccountsReceivableResponse[1];
+        GetPayerAccountsReceivableResponse[] responseHolder =
+                new GetPayerAccountsReceivableResponse[1];
         BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
-        billingService.getAccountsReceivable(request,
-                new StreamObserver<GetAccountsReceivableResponse>() {
+        billingService.getPayerAccountsReceivable(request,
+                new StreamObserver<GetPayerAccountsReceivableResponse>() {
                     @Override
-                    public void onNext(GetAccountsReceivableResponse response) {
+                    public void onNext(GetPayerAccountsReceivableResponse response) {
                         responseHolder[0] = response;
                     }
 
@@ -530,8 +558,8 @@ class BillingServiceImplTest {
 
     private static class SuccessClearingHouseClient implements ClearingHouseClient {
         @Override
-        public ClearingHouseSubmitClaimResponse submitClaim(SubmitClaimRequest request) {
-            return ClearingHouseSubmitClaimResponse.newBuilder().setSuccess(true).build();
+        public ProcessClaimResponse processClaim(ProcessClaimRequest request) {
+            return ProcessClaimResponse.newBuilder().setSuccess(true).build();
         }
     }
 }
