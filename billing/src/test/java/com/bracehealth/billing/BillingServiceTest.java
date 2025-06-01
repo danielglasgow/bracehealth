@@ -6,13 +6,10 @@ import com.bracehealth.shared.AccountsReceivableBucket;
 import com.bracehealth.shared.GetPayerAccountsReceivableRequest;
 import com.bracehealth.shared.GetPayerAccountsReceivableResponse;
 import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableRow;
-import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableBucketValue;
 import com.bracehealth.shared.GetPatientAccountsReceivableRequest;
 import com.bracehealth.shared.GetPatientAccountsReceivableResponse;
 import com.bracehealth.shared.GetPatientAccountsReceivableResponse.PatientAccountsReceivableRow;
-import com.bracehealth.shared.NotifyRemittanceRequest;
 import com.bracehealth.shared.Remittance;
-import com.bracehealth.shared.PatientBalance;
 import com.bracehealth.shared.Patient;
 import com.bracehealth.shared.SubmitPatientPaymentRequest;
 import com.bracehealth.shared.SubmitPatientPaymentResponse;
@@ -29,14 +26,13 @@ import com.bracehealth.shared.Insurance;
 import com.bracehealth.shared.Gender;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.math.BigDecimal;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
 
 class BillingServiceTest {
@@ -74,7 +70,8 @@ class BillingServiceTest {
                 .orElseThrow();
 
         assertEquals(1, medicareRow.getBucketValueCount(), "Should have 1 bucket value");
-        assertEquals(300.0, medicareRow.getBucketValue(0).getAmount(), 0.001,
+        assertEquals(new BigDecimal("300.00"),
+                CurrencyUtil.fromProto(medicareRow.getBucketValue(0).getAmount()),
                 "Medicare total should be 300");
 
         AccountsReceivableRow uhgRow = response.getRowList().stream()
@@ -82,11 +79,11 @@ class BillingServiceTest {
                 .findFirst().orElseThrow();
 
         assertEquals(1, uhgRow.getBucketValueCount(), "Should have 1 bucket value");
-        assertEquals(150.0, uhgRow.getBucketValue(0).getAmount(), 0.001, "UHG total should be 150");
+        assertEquals(new BigDecimal("150.00"),
+                CurrencyUtil.fromProto(uhgRow.getBucketValue(0).getAmount()),
+                "UHG total should be 150");
     }
 
-
-    // I don't love this test, but it's quick and dirty
     @Test
     void getAccountsReceivable_multipleBuckets() throws Exception {
         Instant now = Instant.now();
@@ -95,7 +92,6 @@ class BillingServiceTest {
         Instant twoMinAgo = now.minusSeconds(120);
         Instant threeMinAgo = now.minusSeconds(180);
         Instant fourMinAgo = now.minusSeconds(240);
-
 
         ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
 
@@ -160,7 +156,6 @@ class BillingServiceTest {
         PayerClaim anthemThreePlus2 = getPayerClaimBuilder("A4a", PayerId.ANTHEM, 200.0).build();
         claimStore.addClaim(anthemThreePlus2, threeMinAgo);
 
-
         GetPayerAccountsReceivableRequest request = GetPayerAccountsReceivableRequest.newBuilder()
                 .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(60)
                         .setEndSecondsAgo(0).build())
@@ -180,13 +175,17 @@ class BillingServiceTest {
                 .filter(row -> row.getPayerId().equals(PayerId.MEDICARE.name())).findFirst()
                 .orElseThrow();
         assertEquals(4, medicareRow.getBucketValueCount(), "Should have 4 bucket values");
-        assertEquals(150.0, medicareRow.getBucketValue(0).getAmount(), 0.001,
+        assertEquals(new BigDecimal("150.00"),
+                CurrencyUtil.fromProto(medicareRow.getBucketValue(0).getAmount()),
                 "Medicare 0-1min should be 150 (100 + 50)");
-        assertEquals(275.0, medicareRow.getBucketValue(1).getAmount(), 0.001,
+        assertEquals(new BigDecimal("275.00"),
+                CurrencyUtil.fromProto(medicareRow.getBucketValue(1).getAmount()),
                 "Medicare 1-2min should be 275 (200 + 75)");
-        assertEquals(425.0, medicareRow.getBucketValue(2).getAmount(), 0.001,
+        assertEquals(new BigDecimal("425.00"),
+                CurrencyUtil.fromProto(medicareRow.getBucketValue(2).getAmount()),
                 "Medicare 2-3min should be 425 (300 + 125)");
-        assertEquals(550.0, medicareRow.getBucketValue(3).getAmount(), 0.001,
+        assertEquals(new BigDecimal("550.00"),
+                CurrencyUtil.fromProto(medicareRow.getBucketValue(3).getAmount()),
                 "Medicare 3+min should be 550 (400 + 150)");
 
         // Verify UHG amounts
@@ -194,13 +193,17 @@ class BillingServiceTest {
                 .filter(row -> row.getPayerId().equals(PayerId.UNITED_HEALTH_GROUP.name()))
                 .findFirst().orElseThrow();
         assertEquals(4, uhgRow.getBucketValueCount(), "Should have 4 bucket values");
-        assertEquals(225.0, uhgRow.getBucketValue(0).getAmount(), 0.001,
+        assertEquals(new BigDecimal("225.00"),
+                CurrencyUtil.fromProto(uhgRow.getBucketValue(0).getAmount()),
                 "UHG 0-1min should be 225 (150 + 75)");
-        assertEquals(350.0, uhgRow.getBucketValue(1).getAmount(), 0.001,
+        assertEquals(new BigDecimal("350.00"),
+                CurrencyUtil.fromProto(uhgRow.getBucketValue(1).getAmount()),
                 "UHG 1-2min should be 350 (250 + 100)");
-        assertEquals(475.0, uhgRow.getBucketValue(2).getAmount(), 0.001,
+        assertEquals(new BigDecimal("475.00"),
+                CurrencyUtil.fromProto(uhgRow.getBucketValue(2).getAmount()),
                 "UHG 2-3min should be 475 (350 + 125)");
-        assertEquals(625.0, uhgRow.getBucketValue(3).getAmount(), 0.001,
+        assertEquals(new BigDecimal("625.00"),
+                CurrencyUtil.fromProto(uhgRow.getBucketValue(3).getAmount()),
                 "UHG 3+min should be 625 (450 + 175)");
 
         // Verify Anthem amounts
@@ -208,13 +211,17 @@ class BillingServiceTest {
                 .filter(row -> row.getPayerId().equals(PayerId.ANTHEM.name())).findFirst()
                 .orElseThrow();
         assertEquals(4, anthemRow.getBucketValueCount(), "Should have 4 bucket values");
-        assertEquals(260.0, anthemRow.getBucketValue(0).getAmount(), 0.001,
+        assertEquals(new BigDecimal("260.00"),
+                CurrencyUtil.fromProto(anthemRow.getBucketValue(0).getAmount()),
                 "Anthem 0-1min should be 260 (175 + 85)");
-        assertEquals(400.0, anthemRow.getBucketValue(1).getAmount(), 0.001,
+        assertEquals(new BigDecimal("400.00"),
+                CurrencyUtil.fromProto(anthemRow.getBucketValue(1).getAmount()),
                 "Anthem 1-2min should be 400 (275 + 125)");
-        assertEquals(525.0, anthemRow.getBucketValue(2).getAmount(), 0.001,
+        assertEquals(new BigDecimal("525.00"),
+                CurrencyUtil.fromProto(anthemRow.getBucketValue(2).getAmount()),
                 "Anthem 2-3min should be 525 (375 + 150)");
-        assertEquals(675.0, anthemRow.getBucketValue(3).getAmount(), 0.001,
+        assertEquals(new BigDecimal("675.00"),
+                CurrencyUtil.fromProto(anthemRow.getBucketValue(3).getAmount()),
                 "Anthem 3+min should be 675 (475 + 200)");
     }
 
@@ -253,8 +260,11 @@ class BillingServiceTest {
         claimStore.addClaim(janeClaim, Instant.now());
 
         Remittance remittanceResponse = Remittance.newBuilder().setClaimId("C1")
-                .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
-                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+                .setPayerPaidAmount(CurrencyUtil.toProto(new BigDecimal("80.00")))
+                .setCopayAmount(CurrencyUtil.toProto(new BigDecimal("10.00")))
+                .setCoinsuranceAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setDeductibleAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setNotAllowedAmount(CurrencyUtil.toProto(new BigDecimal("0.00"))).build();
         claimStore.addResponse("C1", remittanceResponse, Instant.now());
 
         GetPatientAccountsReceivableResponse response =
@@ -266,21 +276,27 @@ class BillingServiceTest {
                         .filter(row -> row.getPatient().getFirstName().equals("John")
                                 && row.getPatient().getLastName().equals("Doe"))
                         .findFirst().orElseThrow();
-        assertEquals(10.0, johnRow.getBalance().getOutstandingCopay(), 0.001,
+        assertEquals(new BigDecimal("10.00"),
+                CurrencyUtil.fromProto(johnRow.getBalance().getOutstandingCopay()),
                 "John's copay should be 10.0");
-        assertEquals(5.0, johnRow.getBalance().getOutstandingCoinsurance(), 0.001,
+        assertEquals(new BigDecimal("5.00"),
+                CurrencyUtil.fromProto(johnRow.getBalance().getOutstandingCoinsurance()),
                 "John's coinsurance should be 5.0");
-        assertEquals(5.0, johnRow.getBalance().getOutstandingDeductible(), 0.001,
+        assertEquals(new BigDecimal("5.00"),
+                CurrencyUtil.fromProto(johnRow.getBalance().getOutstandingDeductible()),
                 "John's deductible should be 5.0");
         PatientAccountsReceivableRow janeRow = response.getRowList().stream()
                 .filter(row -> row.getPatient().getFirstName().equals("Jane")
                         && row.getPatient().getLastName().equals("Smith"))
                 .findFirst().orElseThrow();
-        assertEquals(0.0, janeRow.getBalance().getOutstandingCopay(), 0.001,
+        assertEquals(new BigDecimal("0.00"),
+                CurrencyUtil.fromProto(janeRow.getBalance().getOutstandingCopay()),
                 "Jane's copay should be 0.0");
-        assertEquals(0.0, janeRow.getBalance().getOutstandingCoinsurance(), 0.001,
+        assertEquals(new BigDecimal("0.00"),
+                CurrencyUtil.fromProto(janeRow.getBalance().getOutstandingCoinsurance()),
                 "Jane's coinsurance should be 0.0");
-        assertEquals(0.0, janeRow.getBalance().getOutstandingDeductible(), 0.001,
+        assertEquals(new BigDecimal("0.00"),
+                CurrencyUtil.fromProto(janeRow.getBalance().getOutstandingDeductible()),
                 "Jane's deductible should be 0.0");
     }
 
@@ -306,18 +322,27 @@ class BillingServiceTest {
         claimStore.addClaim(janeClaim, Instant.now());
 
         Remittance remittanceResponse = Remittance.newBuilder().setClaimId("C1")
-                .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
-                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+                .setPayerPaidAmount(CurrencyUtil.toProto(new BigDecimal("80.00")))
+                .setCopayAmount(CurrencyUtil.toProto(new BigDecimal("10.00")))
+                .setCoinsuranceAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setDeductibleAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setNotAllowedAmount(CurrencyUtil.toProto(new BigDecimal("0.00"))).build();
         claimStore.addResponse("C1", remittanceResponse, Instant.now());
 
-        remittanceResponse = Remittance.newBuilder().setClaimId("C2").setPayerPaidAmount(160.0)
-                .setCopayAmount(20.0).setCoinsuranceAmount(10.0).setDeductibleAmount(10.0)
-                .setNotAllowedAmount(0.0).build();
+        remittanceResponse = Remittance.newBuilder().setClaimId("C2")
+                .setPayerPaidAmount(CurrencyUtil.toProto(new BigDecimal("160.00")))
+                .setCopayAmount(CurrencyUtil.toProto(new BigDecimal("20.00")))
+                .setCoinsuranceAmount(CurrencyUtil.toProto(new BigDecimal("10.00")))
+                .setDeductibleAmount(CurrencyUtil.toProto(new BigDecimal("10.00")))
+                .setNotAllowedAmount(CurrencyUtil.toProto(new BigDecimal("0.00"))).build();
         claimStore.addResponse("C2", remittanceResponse, Instant.now());
 
-        remittanceResponse = Remittance.newBuilder().setClaimId("C3").setPayerPaidAmount(120.0)
-                .setCopayAmount(15.0).setCoinsuranceAmount(10.0).setDeductibleAmount(5.0)
-                .setNotAllowedAmount(0.0).build();
+        remittanceResponse = Remittance.newBuilder().setClaimId("C3")
+                .setPayerPaidAmount(CurrencyUtil.toProto(new BigDecimal("120.00")))
+                .setCopayAmount(CurrencyUtil.toProto(new BigDecimal("15.00")))
+                .setCoinsuranceAmount(CurrencyUtil.toProto(new BigDecimal("10.00")))
+                .setDeductibleAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setNotAllowedAmount(CurrencyUtil.toProto(new BigDecimal("0.00"))).build();
         claimStore.addResponse("C3", remittanceResponse, Instant.now());
 
         GetPatientAccountsReceivableResponse response =
@@ -334,11 +359,14 @@ class BillingServiceTest {
                         .filter(row -> row.getPatient().getFirstName().equals("John")
                                 && row.getPatient().getLastName().equals("Doe"))
                         .findFirst().orElseThrow();
-        assertEquals(30.0, johnRow.getBalance().getOutstandingCopay(), 0.001,
+        assertEquals(new BigDecimal("30.00"),
+                CurrencyUtil.fromProto(johnRow.getBalance().getOutstandingCopay()),
                 "John's copay should be 30.0 (10.0 + 20.0)");
-        assertEquals(15.0, johnRow.getBalance().getOutstandingCoinsurance(), 0.001,
+        assertEquals(new BigDecimal("15.00"),
+                CurrencyUtil.fromProto(johnRow.getBalance().getOutstandingCoinsurance()),
                 "John's coinsurance should be 15.0 (5.0 + 10.0)");
-        assertEquals(15.0, johnRow.getBalance().getOutstandingDeductible(), 0.001,
+        assertEquals(new BigDecimal("15.00"),
+                CurrencyUtil.fromProto(johnRow.getBalance().getOutstandingDeductible()),
                 "John's deductible should be 15.0 (5.0 + 10.0)");
 
         // For Jane:
@@ -347,11 +375,14 @@ class BillingServiceTest {
                 .filter(row -> row.getPatient().getFirstName().equals("Jane")
                         && row.getPatient().getLastName().equals("Smith"))
                 .findFirst().orElseThrow();
-        assertEquals(15.0, janeRow.getBalance().getOutstandingCopay(), 0.001,
+        assertEquals(new BigDecimal("15.00"),
+                CurrencyUtil.fromProto(janeRow.getBalance().getOutstandingCopay()),
                 "Jane's copay should be 15.0");
-        assertEquals(10.0, janeRow.getBalance().getOutstandingCoinsurance(), 0.001,
+        assertEquals(new BigDecimal("10.00"),
+                CurrencyUtil.fromProto(janeRow.getBalance().getOutstandingCoinsurance()),
                 "Jane's coinsurance should be 10.0");
-        assertEquals(5.0, janeRow.getBalance().getOutstandingDeductible(), 0.001,
+        assertEquals(new BigDecimal("5.00"),
+                CurrencyUtil.fromProto(janeRow.getBalance().getOutstandingDeductible()),
                 "Jane's deductible should be 5.0");
     }
 
@@ -362,28 +393,34 @@ class BillingServiceTest {
         claimStore.addClaim(claim, Instant.now());
 
         Remittance remittanceResponse = Remittance.newBuilder().setClaimId("TEST1")
-                .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
-                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+                .setPayerPaidAmount(CurrencyUtil.toProto(new BigDecimal("80.00")))
+                .setCopayAmount(CurrencyUtil.toProto(new BigDecimal("10.00")))
+                .setCoinsuranceAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setDeductibleAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setNotAllowedAmount(CurrencyUtil.toProto(new BigDecimal("0.00"))).build();
         claimStore.addResponse("TEST1", remittanceResponse, Instant.now());
 
-        SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
-                .setClaimId("TEST1").setAmount(15.0).build();
+        SubmitPatientPaymentRequest request =
+                SubmitPatientPaymentRequest.newBuilder().setClaimId("TEST1")
+                        .setAmount(CurrencyUtil.toProto(new BigDecimal("15.00"))).build();
 
         SubmitPatientPaymentResponse response =
                 executeSubmitPatientPaymentRequest(claimStore, request);
-        assertEquals(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_SUCCESS,
+        assertEquals(
+                SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_PAYMENT_APPLIED_BALANCING_OUTSTANDING,
                 response.getResult());
     }
 
     @Test
     void submitPatientPayment_claimNotFound() throws Exception {
         ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
-        SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
-                .setClaimId("NONEXISTENT").setAmount(15.0).build();
+        SubmitPatientPaymentRequest request =
+                SubmitPatientPaymentRequest.newBuilder().setClaimId("NONEXISTENT")
+                        .setAmount(CurrencyUtil.toProto(new BigDecimal("15.00"))).build();
 
         SubmitPatientPaymentResponse response =
                 executeSubmitPatientPaymentRequest(claimStore, request);
-        assertEquals(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE,
+        assertEquals(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_ERROR,
                 response.getResult());
     }
 
@@ -394,8 +431,9 @@ class BillingServiceTest {
         claimStore.addClaim(claim, Instant.now());
 
         // No remittance response means no patient responsibility
-        SubmitPatientPaymentRequest request = SubmitPatientPaymentRequest.newBuilder()
-                .setClaimId("TEST1").setAmount(15.0).build();
+        SubmitPatientPaymentRequest request =
+                SubmitPatientPaymentRequest.newBuilder().setClaimId("TEST1")
+                        .setAmount(CurrencyUtil.toProto(new BigDecimal("15.00"))).build();
 
         SubmitPatientPaymentResponse response =
                 executeSubmitPatientPaymentRequest(claimStore, request);
@@ -410,21 +448,22 @@ class BillingServiceTest {
         claimStore.addClaim(claim, Instant.now());
 
         Remittance remittanceResponse = Remittance.newBuilder().setClaimId("TEST1")
-                .setPayerPaidAmount(80.0).setCopayAmount(10.0).setCoinsuranceAmount(5.0)
-                .setDeductibleAmount(5.0).setNotAllowedAmount(0.0).build();
+                .setPayerPaidAmount(CurrencyUtil.toProto(new BigDecimal("80.00")))
+                .setCopayAmount(CurrencyUtil.toProto(new BigDecimal("10.00")))
+                .setCoinsuranceAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setDeductibleAmount(CurrencyUtil.toProto(new BigDecimal("5.00")))
+                .setNotAllowedAmount(CurrencyUtil.toProto(new BigDecimal("0.00"))).build();
         claimStore.addResponse("TEST1", remittanceResponse, Instant.now());
 
+        // Exceeds 10 + 5 + 5 = 20
         SubmitPatientPaymentRequest request =
-                SubmitPatientPaymentRequest.newBuilder().setClaimId("TEST1").setAmount(25.0) // Total
-                                                                                             // patient
-                                                                                             // responsibility
-                                                                                             // is
-                                                                                             // 20.0
-                        .build();
+                SubmitPatientPaymentRequest.newBuilder().setClaimId("TEST1")
+                        .setAmount(CurrencyUtil.toProto(new BigDecimal("25.00"))).build();
 
         SubmitPatientPaymentResponse response =
                 executeSubmitPatientPaymentRequest(claimStore, request);
-        assertEquals(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE,
+        assertEquals(
+                SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_AMOUNT_EXCEEDS_OUTSTANDING_BALANCE,
                 response.getResult());
     }
 
@@ -433,7 +472,8 @@ class BillingServiceTest {
         CountDownLatch latch = new CountDownLatch(1);
         GetPayerAccountsReceivableResponse[] responseHolder =
                 new GetPayerAccountsReceivableResponse[1];
-        BillingService billingService = new BillingService(claimStore, clearingHouseClient);
+        BillingService billingService = new BillingService(new PayerPaymentHelper(claimStore),
+                new PatientPaymentHelper(claimStore), claimStore, clearingHouseClient);
         billingService.getPayerAccountsReceivable(request,
                 new StreamObserver<GetPayerAccountsReceivableResponse>() {
                     @Override
@@ -459,7 +499,8 @@ class BillingServiceTest {
             SubmitClaimRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         SubmitClaimResponse[] responseHolder = new SubmitClaimResponse[1];
-        BillingService billingService = new BillingService(claimStore, clearingHouseClient);
+        BillingService billingService = new BillingService(new PayerPaymentHelper(claimStore),
+                new PatientPaymentHelper(claimStore), claimStore, clearingHouseClient);
         billingService.submitClaim(request, new StreamObserver<SubmitClaimResponse>() {
             @Override
             public void onNext(SubmitClaimResponse response) {
@@ -485,7 +526,8 @@ class BillingServiceTest {
         CountDownLatch latch = new CountDownLatch(1);
         GetPatientAccountsReceivableResponse[] responseHolder =
                 new GetPatientAccountsReceivableResponse[1];
-        BillingService billingService = new BillingService(claimStore, clearingHouseClient);
+        BillingService billingService = new BillingService(new PayerPaymentHelper(claimStore),
+                new PatientPaymentHelper(claimStore), claimStore, clearingHouseClient);
         billingService.getPatientAccountsReceivable(
                 GetPatientAccountsReceivableRequest.getDefaultInstance(),
                 new StreamObserver<GetPatientAccountsReceivableResponse>() {
@@ -512,7 +554,8 @@ class BillingServiceTest {
             SubmitPatientPaymentRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         SubmitPatientPaymentResponse[] responseHolder = new SubmitPatientPaymentResponse[1];
-        BillingService billingService = new BillingService(claimStore, clearingHouseClient);
+        BillingService billingService = new BillingService(new PayerPaymentHelper(claimStore),
+                new PatientPaymentHelper(claimStore), claimStore, clearingHouseClient);
         billingService.submitPatientPayment(request,
                 new StreamObserver<SubmitPatientPaymentResponse>() {
                     @Override
@@ -539,9 +582,10 @@ class BillingServiceTest {
         return PayerClaim.newBuilder().setClaimId(claimId)
                 .setInsurance(Insurance.newBuilder().setPayerId(payerId).setPatientMemberId("PM123")
                         .build())
-                .addServiceLines(ServiceLine.newBuilder().setServiceLineId("SL1")
-                        .setProcedureCode("99213").setUnits(1).setUnitChargeAmount(amount)
-                        .setUnitChargeCurrency("USD").setDoNotBill(false).build());
+                .addServiceLines(
+                        ServiceLine.newBuilder().setServiceLineId("SL1").setProcedureCode("99213")
+                                .setCharge(CurrencyUtil.toProto(new BigDecimal(amount)))
+                                .setDoNotBill(false).build());
     }
 
     private static class SuccessClearingHouseClient implements ClearingHouseClient {

@@ -5,6 +5,7 @@ package com.bracehealth.shared;
 option java_multiple_files = true;
 option java_package = "com.bracehealth.shared";
 
+import "common.proto";
 import "payer_claim.proto";
 import "remittance.proto";
 
@@ -78,15 +79,17 @@ message NotifyRemittanceResponse {
 
 message SubmitPatientPaymentRequest {
   string claim_id = 1;
-  double amount = 2;
+  CurrencyAmount amount = 2;
 }
 
 message SubmitPatientPaymentResponse {
   enum SubmitPatientPaymentResult {
     SUBMIT_PATIENT_PAYMENT_RESULT_UNSPECIFIED = 0;
-    SUBMIT_PATIENT_PAYMENT_RESULT_SUCCESS = 1;
-    SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE = 2;
-    SUBMIT_PATIENT_PAYMENT_NO_OUTSTANDING_BALANCE = 3;
+    SUBMIT_PATIENT_PAYMENT_RESULT_ERROR = 1;
+    SUBMIT_PATIENT_PAYMENT_NO_OUTSTANDING_BALANCE = 2;
+    SUBMIT_PATIENT_PAYMENT_AMOUNT_EXCEEDS_OUTSTANDING_BALANCE = 3;
+    SUBMIT_PATIENT_PAYMENT_RESULT_FULLY_PAID = 4;
+    SUBMIT_PATIENT_PAYMENT_RESULT_PAYMENT_APPLIED_BALANCING_OUTSTANDING = 5;
   }
   SubmitPatientPaymentResult result = 1;
 }
@@ -103,7 +106,7 @@ message GetPayerAccountsReceivableRequest {
 message GetPayerAccountsReceivableResponse {
   message AccountsReceivableBucketValue {
     AccountsReceivableBucket bucket = 1;
-    double amount = 2;
+    CurrencyAmount amount = 2;
   }
   message AccountsReceivableRow {
     string payer_id = 1;
@@ -123,7 +126,7 @@ message AccountsReceivableBucket {
 
 message GetPatientAccountsReceivableRequest {
   // If not specified, all patients are included, otherwise, only the patients in this list are included
-  // For now patient is identified by "firstname_lastname"
+  // For now patient is identified by "firstname_lastname_dob"
   repeated string patient_filter = 1;
 }
 
@@ -162,8 +165,3 @@ message GetPatientClaimsRequest {
 
  /////////////////// Shared types /////////////////////////////////////////
 
- message PatientBalance {
-  double outstanding_copay = 2;
-  double outstanding_coinsurance = 3;
-  double outstanding_deductible = 4;
- }

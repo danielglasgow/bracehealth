@@ -8,24 +8,13 @@ import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerId;
 import java.util.Optional;
 import java.time.Instant;
-import java.util.Map;
-import java.io.IOException;
 import java.nio.file.Path;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextClosedEvent;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
-import java.nio.file.Files;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.util.stream.Collectors;
+import java.math.BigDecimal;
 
 /**
  * Stores (in memory) claims that have been submitted.
@@ -34,14 +23,12 @@ import java.util.stream.Collectors;
  */
 public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
 
-    private static final Logger logger = LoggerFactory.getLogger(ClaimStore.class);
-
     private final Path storagePath;
     private final ConcurrentMap<String, PayerClaim> claims;
     private final ConcurrentMap<String, PayerClaim> pendingClaims;
     private final ConcurrentMap<String, ClaimProcessingInfo> processingInfo;
     private final ConcurrentMap<String, Remittance> remittances;
-    private final ConcurrentMap<String, Double> patientPayments;
+    private final ConcurrentMap<String, BigDecimal> patientPayments;
     private final ConcurrentMap<Patient, ImmutableList<PayerClaim>> claimsByPatient;
     private final ConcurrentMap<PayerId, ImmutableList<PayerClaim>> claimsByPayer;
 
@@ -54,6 +41,10 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         this.patientPayments = new ConcurrentHashMap<>();
         this.claimsByPatient = new ConcurrentHashMap<>();
         this.claimsByPayer = new ConcurrentHashMap<>();
+    }
+
+    public PayerClaim getClaim(String claimId) {
+        return claims.get(claimId);
     }
 
     public boolean containsClaim(String claimId) {
@@ -69,7 +60,8 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
     public void addClaim(PayerClaim claim, Instant submittedAt) {
         checkClaimDoesNotExist(claim);
         claims.putIfAbsent(claim.getClaimId(), claim);
-        processingInfo.putIfAbsent(claim.getClaimId(), ClaimProcessingInfo.createNew(submittedAt));
+        processingInfo.putIfAbsent(claim.getClaimId(),
+                ClaimProcessingInfo.createNew(claim.getClaimId(), submittedAt));
         pendingClaims.putIfAbsent(claim.getClaimId(), claim);
         Patient patient = claim.getPatient();
         if (claimsByPatient.containsKey(patient)) {
@@ -96,10 +88,10 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         pendingClaims.remove(claimId);
     }
 
-    public void addPatientPayment(String claimId, double amount) {
+    public void addPatientPayment(String claimId, BigDecimal amount) {
         checkClaimExists(claimId);
         if (patientPayments.containsKey(claimId)) {
-            patientPayments.computeIfPresent(claimId, (id, payment) -> payment + amount);
+            patientPayments.computeIfPresent(claimId, (id, payment) -> payment.add(amount));
         } else {
             patientPayments.computeIfAbsent(claimId, id -> amount);
         }
@@ -113,8 +105,8 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         return remittances.get(claimId);
     }
 
-    public double getPatientPayment(String claimId) {
-        return patientPayments.getOrDefault(claimId, 0.0);
+    public BigDecimal getPatientPayment(String claimId) {
+        return patientPayments.getOrDefault(claimId, BigDecimal.ZERO);
     }
 
     public ImmutableMap<String, PayerClaim> getClaims() {
@@ -129,13 +121,19 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         return ImmutableMap.copyOf(claimsByPayer);
     }
 
-    public record ClaimProcessingInfo(Instant submittedAt, Optional<Instant> responseReceivedAt) {
-        private static ClaimProcessingInfo createNew(Instant submittedAt) {
-            return new ClaimProcessingInfo(submittedAt, Optional.empty());
+    public ImmutableMap<String, PayerClaim> getPendingClaims() {
+        return ImmutableMap.copyOf(pendingClaims);
+    }
+
+    public record ClaimProcessingInfo(String claimId, Instant submittedAt,
+            Optional<Instant> responseReceivedAt) {
+        private static ClaimProcessingInfo createNew(String claimId, Instant submittedAt) {
+            return new ClaimProcessingInfo(claimId, submittedAt, Optional.empty());
         }
 
         private ClaimProcessingInfo updateOnResponseReceived(Instant responseReceivedAt) {
-            return new ClaimProcessingInfo(submittedAt(), Optional.of(responseReceivedAt));
+            return new ClaimProcessingInfo(claimId(), submittedAt(),
+                    Optional.of(responseReceivedAt));
         }
     }
 

@@ -5,6 +5,8 @@ package com.bracehealth.shared;
 option java_multiple_files = true;
 option java_package = "com.bracehealth.shared";
 
+import "common.proto";
+
 message PayerClaim {
   string claim_id = 1;
   int32 place_of_service_code = 2;
@@ -61,10 +63,8 @@ message ServiceLine {
   string service_line_id = 1;
   string procedure_code = 2;
   repeated string modifiers = 3;
-  int32 units = 4;
   string details = 5;
-  string unit_charge_currency = 6;
-  double unit_charge_amount = 7;
+  CurrencyAmount charge = 6;
   bool do_not_bill = 8;
 }
 
