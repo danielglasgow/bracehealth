@@ -37,79 +37,64 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @GrpcService
-public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBase {
-    private static final Logger logger = LoggerFactory.getLogger(BillingServiceImpl.class);
+public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
+    private static final Logger logger = LoggerFactory.getLogger(BillingService.class);
     private final ClaimStore claimStore;
     private final ClearingHouseClient clearingHouseClient;
 
     @Autowired
-    public BillingServiceImpl(ClaimStore claimStore, ClearingHouseClient clearingHouseClient) {
+    public BillingService(ClaimStore claimStore, ClearingHouseClient clearingHouseClient) {
         this.claimStore = claimStore;
         this.clearingHouseClient = clearingHouseClient;
     }
 
     @Override
     public void submitClaim(SubmitClaimRequest request,
-            StreamObserver<SubmitClaimResponse> responseObserver) {
-        try {
-            PayerClaim claim = request.getClaim();
-            logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
-            if (claimStore.containsClaim(claim.getClaimId())) {
-                logger.error("Claim with ID {} already exists", claim.getClaimId());
-                responseObserver.onNext(
-                        createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED));
-                responseObserver.onCompleted();
-                return;
-            }
+            StreamObserver<SubmitClaimResponse> observer) {
+        SubmitClaimResponse response = submitClaimInternal(request.getClaim());
+        observer.onNext(response);
+        observer.onCompleted();
+    }
 
-
-            try {
-                ProcessClaimResponse clearingHouseResponse = clearingHouseClient
-                        .processClaim(ProcessClaimRequest.newBuilder().setClaim(claim).build());
-                if (!clearingHouseResponse.getSuccess()) {
-                    logger.error("Failed to submit claim {} to clearinghouse", claim.getClaimId());
-                    responseObserver
-                            .onNext(createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE));
-                    responseObserver.onCompleted();
-                    return;
-
-                }
-            } catch (Exception e) {
-                logger.error("Error submitting claim {} to clearinghouse", claim.getClaimId(), e);
-                responseObserver
-                        .onNext(createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE));
-                responseObserver.onCompleted();
-                return;
-
-            }
-            claimStore.addClaim(claim);
-            responseObserver.onNext(createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS));
-            responseObserver.onCompleted();
-        } catch (Exception e) {
-            logger.error("Error processing claim submission", e);
-            responseObserver.onError(e);
+    private SubmitClaimResponse submitClaimInternal(PayerClaim claim) {
+        PayerClaim claim = request.getClaim();
+        logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
+        if (claimStore.containsClaim(claim.getClaimId())) {
+            logger.error("Claim with ID {} already exists", claim.getClaimId());
+            return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED);
         }
+
+        try {
+            ProcessClaimRequest request = ProcessClaimRequest.newBuilder().setClaim(claim).build();
+            ProcessClaimResponse response = clearingHouseClient.processClaim(request);
+            if (!response.getSuccess()) {
+                logger.error("Failed to submit claim {} to clearinghouse", claim.getClaimId());
+                return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE);
+
+            }
+        } catch (Exception e) {
+            logger.error("Error submitting claim {} to clearinghouse", claim.getClaimId(), e);
+            return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE);
+
+        }
+        claimStore.addClaim(claim);
+        return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS);
     }
 
     @Override
     public void notifyRemittance(NotifyRemittanceRequest request,
-            StreamObserver<NotifyRemittanceResponse> responseObserver) {
-        try {
-            Remittance remittance = request.getRemittance();
-            logger.info("Received remittance for claim ID: {}", remittance.getClaimId());
-            claimStore.addResponse(remittance.getClaimId(), remittance);
-            responseObserver.onNext(NotifyRemittanceResponse.newBuilder()
-                    .setResult(NotifyRemittanceResult.NOTIFY_REMITTANCE_RESULT_SUCCESS).build());
-            responseObserver.onCompleted();
-        } catch (Exception e) {
-            logger.error("Error processing remittance", e);
-            responseObserver.onError(e);
-        }
+            StreamObserver<NotifyRemittanceResponse> observer) {
+        Remittance remittance = request.getRemittance();
+        logger.info("Received remittance for claim ID: {}", remittance.getClaimId());
+        claimStore.addResponse(remittance.getClaimId(), remittance);
+        observer.onNext(NotifyRemittanceResponse.newBuilder()
+                .setResult(NotifyRemittanceResult.NOTIFY_REMITTANCE_RESULT_SUCCESS).build());
+        observer.onCompleted();
     }
 
     @Override
     public void getPayerAccountsReceivable(GetPayerAccountsReceivableRequest request,
-            StreamObserver<GetPayerAccountsReceivableResponse> responseObserver) {
+            StreamObserver<GetPayerAccountsReceivableResponse> observer) {
         // TODO: Add verification that buckets are non-overlapping
         try {
             logger.info("Received accounts receivable request with {} buckets",
@@ -130,11 +115,11 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                         createRow(payerId, claimsByPayer.get(payerId), request.getBucketList()));
 
             }
-            responseObserver.onNext(responseBuilder.build());
-            responseObserver.onCompleted();
+            observer.onNext(responseBuilder.build());
+            observer.onCompleted();
         } catch (Exception e) {
             logger.error("Error processing accounts receivable request", e);
-            responseObserver.onError(e);
+            observer.onError(e);
         }
     }
 
@@ -169,7 +154,7 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
 
     @Override
     public void getPatientAccountsReceivable(GetPatientAccountsReceivableRequest request,
-            StreamObserver<GetPatientAccountsReceivableResponse> responseObserver) {
+            StreamObserver<GetPatientAccountsReceivableResponse> observer) {
         try {
             logger.info("Received patient accounts receivable request");
 
@@ -233,17 +218,17 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
                                 .build());
             }
 
-            responseObserver.onNext(responseBuilder.build());
-            responseObserver.onCompleted();
+            observer.onNext(responseBuilder.build());
+            observer.onCompleted();
         } catch (Exception e) {
             logger.error("Error processing patient accounts receivable request", e);
-            responseObserver.onError(e);
+            observer.onError(e);
         }
     }
 
     @Override
     public void submitPatientPayment(SubmitPatientPaymentRequest request,
-            StreamObserver<SubmitPatientPaymentResponse> responseObserver) {
+            StreamObserver<SubmitPatientPaymentResponse> observer) {
         try {
             String claimId = request.getClaimId();
             double amount = request.getAmount();
@@ -251,47 +236,45 @@ public class BillingServiceImpl extends BillingServiceGrpc.BillingServiceImplBas
 
             if (!claimStore.containsClaim(claimId)) {
                 logger.error("Claim with ID {} not found", claimId);
-                responseObserver.onNext(SubmitPatientPaymentResponse.newBuilder()
+                observer.onNext(SubmitPatientPaymentResponse.newBuilder()
                         .setResult(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE)
                         .build());
-                responseObserver.onCompleted();
+                observer.onCompleted();
                 return;
             }
 
             double outstandingBalance = claimStore.getOutstandingPatientBalance(claimId);
             if (outstandingBalance <= 0) {
                 logger.error("No outstanding balance for claim ID {}", claimId);
-                responseObserver.onNext(SubmitPatientPaymentResponse.newBuilder().setResult(
+                observer.onNext(SubmitPatientPaymentResponse.newBuilder().setResult(
                         SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_NO_OUTSTANDING_BALANCE)
                         .build());
-                responseObserver.onCompleted();
+                observer.onCompleted();
                 return;
             }
 
             if (amount > outstandingBalance) {
                 logger.error("Payment amount {} exceeds outstanding balance {} for claim ID {}",
                         amount, outstandingBalance, claimId);
-                responseObserver.onNext(SubmitPatientPaymentResponse.newBuilder()
+                observer.onNext(SubmitPatientPaymentResponse.newBuilder()
                         .setResult(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FAILURE)
                         .build());
-                responseObserver.onCompleted();
+                observer.onCompleted();
                 return;
             }
 
             claimStore.addPatientPayment(claimId, amount);
-            responseObserver.onNext(SubmitPatientPaymentResponse.newBuilder()
+            observer.onNext(SubmitPatientPaymentResponse.newBuilder()
                     .setResult(SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_SUCCESS)
                     .build());
-            responseObserver.onCompleted();
+            observer.onCompleted();
         } catch (Exception e) {
             logger.error("Error processing patient payment", e);
-            responseObserver.onError(e);
+            observer.onError(e);
         }
     }
 
     private static SubmitClaimResponse createResponse(SubmitClaimResult result) {
         return SubmitClaimResponse.newBuilder().setResult(result).build();
     }
-
-
 }

@@ -29,7 +29,7 @@ e.g
 
 ```
 mvn test -Dtest=ClaimStoreTest
-mvn test -Dtest=BillingServiceImplTest
+mvn test -Dtest=BillingServiceTest
 ```
 
 (Weird race conditions, maybe, again)

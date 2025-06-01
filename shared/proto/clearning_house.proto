@@ -24,5 +24,3 @@ message ProcessClaimRequest {
   // In theory this requeset would also include a "callback" so the ClearingHouse could notify the BillingService when the claim is processed.
   PayerClaim claim = 1;
 }
-
-

@@ -39,7 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
 import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
 
-class BillingServiceImplTest {
+class BillingServiceTest {
 
     @TempDir
     Path tempDir;
@@ -440,7 +440,7 @@ class BillingServiceImplTest {
         CountDownLatch latch = new CountDownLatch(1);
         GetPayerAccountsReceivableResponse[] responseHolder =
                 new GetPayerAccountsReceivableResponse[1];
-        BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
+        BillingService billingService = new BillingService(claimStore, clearingHouseClient);
         billingService.getPayerAccountsReceivable(request,
                 new StreamObserver<GetPayerAccountsReceivableResponse>() {
                     @Override
@@ -466,7 +466,7 @@ class BillingServiceImplTest {
             SubmitClaimRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         SubmitClaimResponse[] responseHolder = new SubmitClaimResponse[1];
-        BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
+        BillingService billingService = new BillingService(claimStore, clearingHouseClient);
         billingService.submitClaim(request, new StreamObserver<SubmitClaimResponse>() {
             @Override
             public void onNext(SubmitClaimResponse response) {
@@ -492,7 +492,7 @@ class BillingServiceImplTest {
         CountDownLatch latch = new CountDownLatch(1);
         GetPatientAccountsReceivableResponse[] responseHolder =
                 new GetPatientAccountsReceivableResponse[1];
-        BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
+        BillingService billingService = new BillingService(claimStore, clearingHouseClient);
         billingService.getPatientAccountsReceivable(
                 GetPatientAccountsReceivableRequest.getDefaultInstance(),
                 new StreamObserver<GetPatientAccountsReceivableResponse>() {
@@ -519,7 +519,7 @@ class BillingServiceImplTest {
             SubmitPatientPaymentRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         SubmitPatientPaymentResponse[] responseHolder = new SubmitPatientPaymentResponse[1];
-        BillingServiceImpl billingService = new BillingServiceImpl(claimStore, clearingHouseClient);
+        BillingService billingService = new BillingService(claimStore, clearingHouseClient);
         billingService.submitPatientPayment(request,
                 new StreamObserver<SubmitPatientPaymentResponse>() {
                     @Override

@@ -167,12 +167,3 @@ message GetPatientClaimsRequest {
   double outstanding_coinsurance = 3;
   double outstanding_deductible = 4;
  }
-
-
-
-
-
-
-
-
- 
