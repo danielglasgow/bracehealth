@@ -2,6 +2,7 @@ package com.bracehealth.billing;
 
 import com.bracehealth.billing.ClaimStore.ClaimProcessingInfo;
 import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.billing.PatientStore.PatientId;
 import com.bracehealth.shared.SubmitPatientPaymentResponse.SubmitPatientPaymentResult;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.GetPatientAccountsReceivableResponse;
@@ -12,6 +13,7 @@ import com.bracehealth.shared.Patient;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.time.Instant;
@@ -27,9 +29,11 @@ public class PatientPaymentHelper {
     private static final Logger logger = LoggerFactory.getLogger(PatientPaymentHelper.class);
 
     private final ClaimStore claimStore;
+    private final PatientStore patientStore;
 
-    public PatientPaymentHelper(ClaimStore claimStore) {
+    public PatientPaymentHelper(ClaimStore claimStore, PatientStore patientStore) {
         this.claimStore = claimStore;
+        this.patientStore = patientStore;
     }
 
     public SubmitPatientPaymentResult payClaim(String claimId, CurrencyAmount amount) {
@@ -61,14 +65,12 @@ public class PatientPaymentHelper {
     }
 
     public GetPatientAccountsReceivableResponse getPatientAccountsReceivable(
-            ImmutableList<Patient> patients) {
-        ImmutableMap<Patient, ImmutableList<PayerClaim>> claimsByPatient =
-                claimStore.getClaimsByPatient();
+            ImmutableSet<PatientId> patientIds) {
         GetPatientAccountsReceivableResponse.Builder responseBuilder =
                 GetPatientAccountsReceivableResponse.newBuilder();
-        for (Patient patient : patients) {
-            ImmutableList<PayerClaim> claims =
-                    claimsByPatient.getOrDefault(patient, ImmutableList.of());
+        for (PatientId patientId : patientIds) {
+            Patient patient = patientStore.getPatient(patientId);
+            ImmutableList<PayerClaim> claims = claimStore.getPatientClaims(patientId);
             OutstandingBalance cumulativeBalance = new OutstandingBalance(CurrencyAmount.ZERO,
                     CurrencyAmount.ZERO, CurrencyAmount.ZERO);
             List<PayerClaim> outstandingClaims = new ArrayList<>();

@@ -285,8 +285,13 @@ class BillingServiceTest {
                 .setNotAllowedAmount(CurrencyAmount.from("0.00").toProto()).build();
         claimStore.addResponse("C1", remittanceResponse, Instant.now());
 
+        PatientStore patientStore = new PatientStore();
+        for (PayerClaim claim : claimStore.getClaims().values()) {
+            patientStore.addPatient(claim.getPatient());
+        }
+
         GetPatientAccountsReceivableResponse response =
-                executePatientAccountsReceivableRequest(claimStore);
+                executePatientAccountsReceivableRequest(patientStore, claimStore);
 
         assertEquals(2, response.getRowCount(), "Should have 2 rows (one per patient)");
         PatientAccountsReceivableRow johnRow =
@@ -359,8 +364,13 @@ class BillingServiceTest {
                 .setNotAllowedAmount(CurrencyAmount.from("0.00").toProto()).build();
         claimStore.addResponse("C3", remittanceResponse, Instant.now());
 
+        PatientStore patientStore = new PatientStore();
+        for (PayerClaim claim : claimStore.getClaims().values()) {
+            patientStore.addPatient(claim.getPatient());
+        }
+
         GetPatientAccountsReceivableResponse response =
-                executePatientAccountsReceivableRequest(claimStore);
+                executePatientAccountsReceivableRequest(patientStore, claimStore);
 
         assertEquals(2, response.getRowCount(), "Should have 2 rows (one per patient)");
 
@@ -481,8 +491,10 @@ class BillingServiceTest {
         CountDownLatch latch = new CountDownLatch(1);
         GetPayerAccountsReceivableResponse[] responseHolder =
                 new GetPayerAccountsReceivableResponse[1];
+        PatientStore patientStore = new PatientStore();
         BillingService billingService = new BillingService(new PayerPaymentHelper(claimStore),
-                new PatientPaymentHelper(claimStore), claimStore, clearingHouseClient);
+                new PatientPaymentHelper(claimStore, patientStore), patientStore, claimStore,
+                clearingHouseClient);
         billingService.getPayerAccountsReceivable(request,
                 new StreamObserver<GetPayerAccountsReceivableResponse>() {
                     @Override
@@ -508,8 +520,10 @@ class BillingServiceTest {
             SubmitClaimRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         SubmitClaimResponse[] responseHolder = new SubmitClaimResponse[1];
+        PatientStore patientStore = new PatientStore();
         BillingService billingService = new BillingService(new PayerPaymentHelper(claimStore),
-                new PatientPaymentHelper(claimStore), claimStore, clearingHouseClient);
+                new PatientPaymentHelper(claimStore, patientStore), patientStore, claimStore,
+                clearingHouseClient);
         billingService.submitClaim(request, new StreamObserver<SubmitClaimResponse>() {
             @Override
             public void onNext(SubmitClaimResponse response) {
@@ -531,12 +545,13 @@ class BillingServiceTest {
     }
 
     private GetPatientAccountsReceivableResponse executePatientAccountsReceivableRequest(
-            ClaimStore claimStore) throws Exception {
+            PatientStore patientStore, ClaimStore claimStore) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         GetPatientAccountsReceivableResponse[] responseHolder =
                 new GetPatientAccountsReceivableResponse[1];
         BillingService billingService = new BillingService(new PayerPaymentHelper(claimStore),
-                new PatientPaymentHelper(claimStore), claimStore, clearingHouseClient);
+                new PatientPaymentHelper(claimStore, patientStore), patientStore, claimStore,
+                clearingHouseClient);
         billingService.getPatientAccountsReceivable(
                 GetPatientAccountsReceivableRequest.getDefaultInstance(),
                 new StreamObserver<GetPatientAccountsReceivableResponse>() {
@@ -563,8 +578,10 @@ class BillingServiceTest {
             SubmitPatientPaymentRequest request) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         SubmitPatientPaymentResponse[] responseHolder = new SubmitPatientPaymentResponse[1];
+        PatientStore patientStore = new PatientStore();
         BillingService billingService = new BillingService(new PayerPaymentHelper(claimStore),
-                new PatientPaymentHelper(claimStore), claimStore, clearingHouseClient);
+                new PatientPaymentHelper(claimStore, patientStore), patientStore, claimStore,
+                clearingHouseClient);
         billingService.submitPatientPayment(request,
                 new StreamObserver<SubmitPatientPaymentResponse>() {
                     @Override

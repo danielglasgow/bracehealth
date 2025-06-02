@@ -14,6 +14,7 @@ import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.billing.PatientStore.PatientId;
 
 /**
  * Stores (in memory) claims that have been submitted.
@@ -31,7 +32,7 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
     private final ConcurrentMap<String, ClaimProcessingInfo> processingInfo;
     private final ConcurrentMap<String, Remittance> remittances;
     private final ConcurrentMap<String, CurrencyAmount> patientPayments;
-    private final ConcurrentMap<Patient, ImmutableList<PayerClaim>> claimsByPatient;
+    private final ConcurrentMap<PatientId, ImmutableList<PayerClaim>> claimsByPatient;
 
     public ClaimStore(Path storagePath) {
         this.storagePath = storagePath;
@@ -65,11 +66,12 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
                 ClaimProcessingInfo.createNew(claim.getClaimId(), submittedAt));
         payerRemittencePendingClaims.putIfAbsent(claim.getClaimId(), claim);
         Patient patient = claim.getPatient();
-        if (claimsByPatient.containsKey(patient)) {
-            claimsByPatient.computeIfPresent(patient, (p, claims) -> ImmutableList
+        PatientId patientId = PatientId.from(patient);
+        if (claimsByPatient.containsKey(patientId)) {
+            claimsByPatient.computeIfPresent(patientId, (p, claims) -> ImmutableList
                     .<PayerClaim>builder().addAll(claims).add(claim).build());
         } else {
-            claimsByPatient.computeIfAbsent(patient, p -> ImmutableList.of(claim));
+            claimsByPatient.computeIfAbsent(patientId, p -> ImmutableList.of(claim));
         }
     }
 
@@ -114,8 +116,8 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         return ImmutableMap.copyOf(claims);
     }
 
-    public ImmutableMap<Patient, ImmutableList<PayerClaim>> getClaimsByPatient() {
-        return ImmutableMap.copyOf(claimsByPatient);
+    public ImmutableList<PayerClaim> getPatientClaims(PatientId patientId) {
+        return claimsByPatient.getOrDefault(patientId, ImmutableList.of());
     }
 
     public ImmutableMap<String, PayerClaim> getPendingClaims() {

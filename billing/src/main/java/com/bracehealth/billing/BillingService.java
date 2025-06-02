@@ -20,30 +20,35 @@ import com.bracehealth.shared.ProcessClaimResponse;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerId;
 import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.billing.PatientStore.PatientId;
 import com.bracehealth.shared.AccountsReceivableBucket;
 import com.bracehealth.shared.BillingServiceGrpc;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Instant;
-import java.util.stream.Collectors;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
 @GrpcService
 public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(BillingService.class);
     private final PayerPaymentHelper payerPayments;
     private final PatientPaymentHelper patientPayments;
+    private final PatientStore patientStore;
     private final ClaimStore claimStore;
     private final ClearingHouseClient clearingHouseClient;
 
     @Autowired
     public BillingService(PayerPaymentHelper payerPayments, PatientPaymentHelper patientPayments,
-            ClaimStore claimStore, ClearingHouseClient clearingHouseClient) {
+            PatientStore patientStore, ClaimStore claimStore,
+            ClearingHouseClient clearingHouseClient) {
         this.payerPayments = payerPayments;
+        this.patientStore = patientStore;
         this.patientPayments = patientPayments;
         this.claimStore = claimStore;
         this.clearingHouseClient = clearingHouseClient;
@@ -62,6 +67,17 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
         if (claimStore.containsClaim(claim.getClaimId())) {
             logger.error("Claim with ID {} already exists", claim.getClaimId());
             return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED);
+        }
+        Patient patient = claim.getPatient();
+        if (!patientStore.addPatient(patient)) {
+            Patient existingPatient = patientStore.getCanonicalPatient(patient);
+            if (!existingPatient.equals(patient)) {
+                logger.error(
+                        "Patient already exists with different details, existing patient: {}, submitted patient: {}",
+                        existingPatient, patient);
+                return createResponse(
+                        SubmitClaimResult.SUBMIT_CLAIM_RESULT_PATIENT_WITH_SAME_ID_ALREADY_EXISTS);
+            }
         }
 
         try {
@@ -113,13 +129,12 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
     public void getPatientAccountsReceivable(GetPatientAccountsReceivableRequest request,
             StreamObserver<GetPatientAccountsReceivableResponse> observer) {
         logger.info("Received patient accounts receivable request");
-        ImmutableList<Patient> patients = request.getPatientFilterList().size() == 0
-                ? ImmutableList.copyOf(claimStore.getClaimsByPatient().keySet())
-                : ImmutableList.copyOf(claimStore.getClaimsByPatient().keySet().stream().filter(
-                        patient -> request.getPatientFilterList().contains(toPatientId(patient)))
-                        .collect(Collectors.toList()));
+        ImmutableSet<PatientId> patientIds =
+                request.getPatientFilterList().size() == 0 ? patientStore.getAllPatientIds()
+                        : request.getPatientFilterList().stream().map(PatientId::parse)
+                                .collect(toImmutableSet());
         GetPatientAccountsReceivableResponse response =
-                patientPayments.getPatientAccountsReceivable(patients);
+                patientPayments.getPatientAccountsReceivable(patientIds);
         observer.onNext(response);
         observer.onCompleted();
     }
@@ -137,10 +152,6 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
         return SubmitClaimResponse.newBuilder().setResult(result).build();
     }
 
-    private static String toPatientId(Patient patient) {
-        return patient.getFirstName().toLowerCase() + "_" + patient.getLastName().toLowerCase()
-                + "_" + patient.getDob();
-    }
 
     private static ImmutableList<PayerId> allPayerIds() {
         var payerIds = ImmutableList.copyOf(PayerId.values()).stream()
