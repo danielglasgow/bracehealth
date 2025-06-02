@@ -64,25 +64,31 @@ class BillingServiceTest {
 
         GetPayerAccountsReceivableResponse response = executeRequest(claimStore, request);
 
-        assertEquals(2, response.getRowCount(), "Should have 2 rows (one per payer)");
+        assertEquals(3, response.getRowCount(), "Should have 3 rows (one per payer)");
 
         AccountsReceivableRow medicareRow = response.getRowList().stream()
                 .filter(row -> row.getPayerId().equals(PayerId.MEDICARE.name())).findFirst()
                 .orElseThrow();
 
         assertEquals(1, medicareRow.getBucketValueCount(), "Should have 1 bucket value");
-        assertEquals(new BigDecimal("300.00"),
-                CurrencyAmount.fromProto(medicareRow.getBucketValue(0).getAmount()).value(),
-                "Medicare total should be 300");
+        assertEquals(CurrencyAmount.from("300.00").toProto(),
+                medicareRow.getBucketValue(0).getAmount(), "Medicare total should be 300");
 
         AccountsReceivableRow uhgRow = response.getRowList().stream()
                 .filter(row -> row.getPayerId().equals(PayerId.UNITED_HEALTH_GROUP.name()))
                 .findFirst().orElseThrow();
 
         assertEquals(1, uhgRow.getBucketValueCount(), "Should have 1 bucket value");
-        assertEquals(new BigDecimal("150.00"),
-                CurrencyAmount.fromProto(uhgRow.getBucketValue(0).getAmount()).value(),
+        assertEquals(CurrencyAmount.from("150.00").toProto(), uhgRow.getBucketValue(0).getAmount(),
                 "UHG total should be 150");
+
+        AccountsReceivableRow anthemRow = response.getRowList().stream()
+                .filter(row -> row.getPayerId().equals(PayerId.ANTHEM.name())).findFirst()
+                .orElseThrow();
+
+        assertEquals(1, anthemRow.getBucketValueCount(), "Should have 1 bucket value");
+        assertEquals(CurrencyAmount.from("0.00").toProto(), anthemRow.getBucketValue(0).getAmount(),
+                "Anthem total should be 0");
     }
 
     @Test
@@ -216,6 +222,25 @@ class BillingServiceTest {
                 anthemRow.getBucketValue(2).getAmount(), "Anthem 2-3min should be 525 (375 + 150)");
         assertEquals(CurrencyAmount.from("675.00").toProto(),
                 anthemRow.getBucketValue(3).getAmount(), "Anthem 3+min should be 675 (475 + 200)");
+    }
+
+    @Test
+    public void getAccountsReceivable_anthemFilter_returnsOnlyAnthem() throws Exception {
+        ClaimStore claimStore = new ClaimStore(tempDir.resolve("never.json"));
+        PayerClaim claim = getPayerClaimBuilder("TEST1", PayerId.ANTHEM, 100.0).build();
+        claimStore.addClaim(claim, Instant.now());
+
+        GetPayerAccountsReceivableRequest request = GetPayerAccountsReceivableRequest.newBuilder()
+                .addPayerFilter(PayerId.ANTHEM).build();
+
+        GetPayerAccountsReceivableResponse response = executeRequest(claimStore, request);
+
+        assertEquals(1, response.getRowCount(), "Should have 1 row (one per payer)");
+        assertEquals(PayerId.ANTHEM.name(), response.getRow(0).getPayerId());
+        AccountsReceivableRow anthemRow = response.getRow(0);
+        assertEquals(1, anthemRow.getBucketValueCount(), "Should have 1 bucket value");
+        assertEquals(CurrencyAmount.from("100.00").toProto(),
+                anthemRow.getBucketValue(0).getAmount());
     }
 
     @Test

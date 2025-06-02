@@ -16,7 +16,9 @@ import java.time.Instant;
 import java.util.List;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.function.Function.identity;;
 
 /**
  * Helper for calculating payer accounts receivable.
@@ -34,7 +36,9 @@ public class PayerPaymentHelper {
         GetPayerAccountsReceivableResponse.Builder responseBuilder =
                 GetPayerAccountsReceivableResponse.newBuilder();
         ImmutableMap<PayerId, ImmutableList<PayerClaim>> claimsByPayer =
-                claimStore.getClaimsByPayer();
+                ImmutableMap.copyOf(claimStore.getPendingClaims().values().stream()
+                        .collect(groupingBy(claim -> claim.getInsurance().getPayerId(),
+                                mapping(identity(), toImmutableList()))));
         ImmutableSet<String> allPendingClaims =
                 ImmutableSet.copyOf(claimStore.getPendingClaims().keySet());
         for (PayerId payerId : payerIds) {

@@ -30,7 +30,6 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
     private final ConcurrentMap<String, Remittance> remittances;
     private final ConcurrentMap<String, CurrencyAmount> patientPayments;
     private final ConcurrentMap<Patient, ImmutableList<PayerClaim>> claimsByPatient;
-    private final ConcurrentMap<PayerId, ImmutableList<PayerClaim>> claimsByPayer;
 
     public ClaimStore(Path storagePath) {
         this.storagePath = storagePath;
@@ -40,7 +39,6 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         this.remittances = new ConcurrentHashMap<>();
         this.patientPayments = new ConcurrentHashMap<>();
         this.claimsByPatient = new ConcurrentHashMap<>();
-        this.claimsByPayer = new ConcurrentHashMap<>();
     }
 
     public PayerClaim getClaim(String claimId) {
@@ -69,13 +67,6 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
                     .<PayerClaim>builder().addAll(claims).add(claim).build());
         } else {
             claimsByPatient.computeIfAbsent(patient, p -> ImmutableList.of(claim));
-        }
-        PayerId payerId = claim.getInsurance().getPayerId();
-        if (claimsByPayer.containsKey(payerId)) {
-            claimsByPayer.computeIfPresent(payerId, (p, claims) -> ImmutableList
-                    .<PayerClaim>builder().addAll(claims).add(claim).build());
-        } else {
-            claimsByPayer.computeIfAbsent(payerId, p -> ImmutableList.of(claim));
         }
     }
 
@@ -117,10 +108,6 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         return ImmutableMap.copyOf(claimsByPatient);
     }
 
-    public ImmutableMap<PayerId, ImmutableList<PayerClaim>> getClaimsByPayer() {
-        return ImmutableMap.copyOf(claimsByPayer);
-    }
-
     public ImmutableMap<String, PayerClaim> getPendingClaims() {
         return ImmutableMap.copyOf(pendingClaims);
     }
@@ -151,12 +138,6 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         List<PayerClaim> patientClaims = claimsByPatient.getOrDefault(patient, ImmutableList.of());
         if (patientClaims.stream().anyMatch(c -> c.getClaimId().equals(claim.getClaimId()))) {
             throw new IllegalArgumentException("Claim already exists for patient: " + patient);
-        }
-        PayerId payerId = claim.getInsurance().getPayerId();
-        List<PayerClaim> payerClaims = claimsByPayer.getOrDefault(payerId, ImmutableList.of());
-        if (payerClaims.stream().anyMatch(c -> c.getClaimId().equals(claim.getClaimId()))) {
-            throw new IllegalArgumentException(
-                    "Claim already exists for payer: " + claim.getInsurance().getPayerId());
         }
         ImmutableList<ClaimMap> maps = ImmutableList.of(new ClaimMap(claims, "claims"),
                 new ClaimMap(pendingClaims, "pendingClaims"),

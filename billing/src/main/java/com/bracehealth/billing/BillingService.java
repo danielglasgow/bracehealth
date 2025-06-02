@@ -20,6 +20,7 @@ import com.bracehealth.shared.ProcessClaimResponse;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerId;
 import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.shared.AccountsReceivableBucket;
 import com.bracehealth.shared.BillingServiceGrpc;
 import com.google.common.collect.ImmutableList;
 import io.grpc.stub.StreamObserver;
@@ -29,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Instant;
 import java.util.stream.Collectors;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 
 @GrpcService
 public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
@@ -96,11 +98,13 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
         // TODO: Add verification that buckets are non-overlapping
         logger.info("Received accounts receivable request with {} buckets",
                 request.getBucketCount());
-        ImmutableList<PayerId> payerIds = request.getPayerFilterList().size() == 0
-                ? ImmutableList.copyOf(claimStore.getClaimsByPayer().keySet())
+        ImmutableList<PayerId> payerIds = request.getPayerFilterList().size() == 0 ? allPayerIds()
                 : ImmutableList.copyOf(request.getPayerFilterList());
-        GetPayerAccountsReceivableResponse response = payerPayments.getPayerAccountsReceivable(
-                payerIds, ImmutableList.copyOf(request.getBucketList()));
+        ImmutableList<AccountsReceivableBucket> buckets =
+                request.getBucketList().size() == 0 ? ImmutableList.of(catchAllBucket())
+                        : ImmutableList.copyOf(request.getBucketList());
+        GetPayerAccountsReceivableResponse response =
+                payerPayments.getPayerAccountsReceivable(payerIds, buckets);
         observer.onNext(response);
         observer.onCompleted();
     }
@@ -136,5 +140,19 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
     private static String toPatientId(Patient patient) {
         return patient.getFirstName().toLowerCase() + "_" + patient.getLastName().toLowerCase()
                 + "_" + patient.getDob();
+    }
+
+    private static ImmutableList<PayerId> allPayerIds() {
+        var payerIds = ImmutableList.copyOf(PayerId.values()).stream()
+                .filter(payerId -> payerId != PayerId.PAYER_ID_UNSPECIFIED)
+                .filter(payerId -> payerId != PayerId.UNRECOGNIZED).collect(toImmutableList());
+        System.out.println("All payer IDs: " + payerIds);
+        return payerIds;
+    }
+
+    private static AccountsReceivableBucket catchAllBucket() {
+        // The default bucket will get interpreted as start time EPOCH and end time NOW, hence
+        // covering all time
+        return AccountsReceivableBucket.newBuilder().build();
     }
 }
