@@ -27,7 +27,7 @@ public class ClearingHouseClientConfig {
 
     @Bean
     @Primary
-    @ConditionalOnProperty(name = "clearinghouse.mode", havingValue = "noop", matchIfMissing = true)
+    @ConditionalOnProperty(name = "clearinghouse.mode", havingValue = "noop")
     public ClearingHouseClient noOpClearingHouseClient() {
         return new ClearingHouseClient() {
             @Override
@@ -37,6 +37,16 @@ public class ClearingHouseClientConfig {
         };
     }
 
+    @Bean
+    @Primary
+    @ConditionalOnProperty(name = "clearinghouse.mode", havingValue = "inmemory",
+            matchIfMissing = true)
+    public ClearingHouseClient inMemoryClearingHouseClient(
+            com.bracehealth.shared.BillingServiceGrpc.BillingServiceBlockingStub billingService) {
+        return new InMemoryClearingHouseClient(billingService);
+    }
+
+
     @GrpcClient("clearinghouse-service")
     private ClearingHouseServiceGrpc.ClearingHouseServiceBlockingStub clearingHouseStub;
 
@@ -44,4 +54,6 @@ public class ClearingHouseClientConfig {
     public ClearingHouseServiceGrpc.ClearingHouseServiceBlockingStub clearingHouseStub() {
         return clearingHouseStub;
     }
+
+
 }
