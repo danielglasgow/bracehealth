@@ -1,6 +1,6 @@
 package com.bracehealth.billing;
 
-import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.shared.CurrencyUtil.CurrencyAmount;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 

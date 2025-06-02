@@ -1,4 +1,4 @@
-package com.bracehealth.billing;
+package com.bracehealth.shared;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -19,7 +19,7 @@ public class CurrencyUtil {
     /**
      * Convert proto (whole + decimal) → BigDecimal.
      */
-    private static BigDecimal protoToBigDecimal(com.bracehealth.shared.CurrencyAmount proto) {
+    private static BigDecimal protoToBigDecimal(CurrencyValue proto) {
         BigDecimal whole = BigDecimal.valueOf(proto.getWholeAmount());
         BigDecimal fraction = BigDecimal.valueOf(proto.getDecimalAmount()).divide(SCALE_FACTOR,
                 DECIMAL_PLACES, RoundingMode.UNNECESSARY);
@@ -34,16 +34,15 @@ public class CurrencyUtil {
      * Convert BigDecimal → proto (whole + two-digit decimal). Throws ArithmeticException if there
      * are more than two decimal places.
      */
-    private static com.bracehealth.shared.CurrencyAmount bigDecimalToProto(BigDecimal amount) {
+    private static CurrencyValue bigDecimalToProto(BigDecimal amount) {
         // Ensure exactly two decimals (e.g. 123.450 → 123.45)
         amount = amount.setScale(DECIMAL_PLACES, RoundingMode.DOWN);
         // Shift decimal point right by two places e.g. 123.45 × 100 = 12345
         long units = amount.multiply(SCALE_FACTOR).longValueExact();
-        // Split into “whole” and “decimal”
+        // Split into "whole" and "decimal"
         int whole = (int) (units / SCALE_FACTOR.longValue()); // 12345 / 100 = 123
         int decimal = (int) (Math.abs(units % SCALE_FACTOR.longValue())); // 12345 % 100 = 45
-        return com.bracehealth.shared.CurrencyAmount.newBuilder().setWholeAmount(whole)
-                .setDecimalAmount(decimal).build();
+        return CurrencyValue.newBuilder().setWholeAmount(whole).setDecimalAmount(decimal).build();
     }
 
     public record CurrencyAmount(BigDecimal value) {
@@ -53,7 +52,7 @@ public class CurrencyUtil {
 
         public static final CurrencyAmount ZERO = new CurrencyAmount(BigDecimal.ZERO);
 
-        public com.bracehealth.shared.CurrencyAmount toProto() {
+        public CurrencyValue toProto() {
             return bigDecimalToProto(value);
         }
 
@@ -93,7 +92,7 @@ public class CurrencyUtil {
             return value.compareTo(other.value) <= 0;
         }
 
-        public static CurrencyAmount fromProto(com.bracehealth.shared.CurrencyAmount proto) {
+        public static CurrencyAmount fromProto(CurrencyValue proto) {
             return new CurrencyAmount(protoToBigDecimal(proto));
         }
 
@@ -106,6 +105,6 @@ public class CurrencyUtil {
         }
     }
 
-    record SubtractUntilZeroResult(CurrencyAmount value, CurrencyAmount remaining) {
+    public record SubtractUntilZeroResult(CurrencyAmount value, CurrencyAmount remaining) {
     }
 }

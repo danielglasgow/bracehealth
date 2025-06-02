@@ -6,12 +6,12 @@ option java_multiple_files = true;
 option java_package = "com.bracehealth.shared";
 
 message PatientBalance {
-  CurrencyAmount outstanding_copay = 2;
-  CurrencyAmount outstanding_coinsurance = 3;
-  CurrencyAmount outstanding_deductible = 4;
+  CurrencyValue outstanding_copay = 2;
+  CurrencyValue outstanding_coinsurance = 3;
+  CurrencyValue outstanding_deductible = 4;
 }
   
-message CurrencyAmount {
+message CurrencyValue {
   int32 decimal_amount = 1; // Two places of precision
   int32 whole_amount = 2;
 }

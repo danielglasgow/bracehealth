@@ -64,7 +64,7 @@ message ServiceLine {
   string procedure_code = 2;
   repeated string modifiers = 3;
   string details = 5;
-  CurrencyAmount charge = 6;
+  CurrencyValue charge = 6;
   bool do_not_bill = 8;
 }
 

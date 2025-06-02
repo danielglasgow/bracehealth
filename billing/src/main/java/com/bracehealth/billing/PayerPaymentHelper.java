@@ -8,7 +8,7 @@ import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceiva
 import com.bracehealth.shared.ServiceLine;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerId;
-import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.shared.CurrencyUtil.CurrencyAmount;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;

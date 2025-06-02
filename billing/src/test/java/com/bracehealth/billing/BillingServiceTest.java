@@ -24,7 +24,7 @@ import com.bracehealth.shared.PayerId;
 import com.bracehealth.shared.ServiceLine;
 import com.bracehealth.shared.Insurance;
 import com.bracehealth.shared.Gender;
-import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.shared.CurrencyUtil.CurrencyAmount;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.concurrent.CountDownLatch;

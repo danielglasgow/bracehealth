@@ -13,7 +13,7 @@ import org.springframework.context.event.ContextClosedEvent;
 import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.shared.CurrencyUtil.CurrencyAmount;
 import com.bracehealth.billing.PatientStore.PatientId;
 
 /**

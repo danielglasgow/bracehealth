@@ -80,7 +80,7 @@ message NotifyRemittanceResponse {
 
 message SubmitPatientPaymentRequest {
   string claim_id = 1;
-  CurrencyAmount amount = 2;
+  CurrencyValue amount = 2;
 }
 
 message SubmitPatientPaymentResponse {
@@ -107,7 +107,7 @@ message GetPayerAccountsReceivableRequest {
 message GetPayerAccountsReceivableResponse {
   message AccountsReceivableBucketValue {
     AccountsReceivableBucket bucket = 1;
-    CurrencyAmount amount = 2;
+    CurrencyValue amount = 2;
   }
   message AccountsReceivableRow {
     string payer_id = 1;

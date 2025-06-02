@@ -10,7 +10,7 @@ import com.bracehealth.shared.SubmitClaimRequest;
 import com.bracehealth.shared.SubmitClaimResponse;
 import com.bracehealth.shared.NotifyRemittanceRequest;
 import com.bracehealth.shared.NotifyRemittanceResponse;
-import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.shared.CurrencyUtil.CurrencyAmount;
 import com.bracehealth.billing.PatientStore.PatientId;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.Test;

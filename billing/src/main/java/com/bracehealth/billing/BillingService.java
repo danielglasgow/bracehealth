@@ -24,7 +24,7 @@ import com.bracehealth.shared.ProcessClaimResponse;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerId;
 import com.bracehealth.billing.ClaimStore.ClaimProcessingInfo;
-import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.shared.CurrencyUtil.CurrencyAmount;
 import com.bracehealth.billing.PatientStore.PatientId;
 import com.bracehealth.shared.AccountsReceivableBucket;
 import com.bracehealth.shared.BillingServiceGrpc;

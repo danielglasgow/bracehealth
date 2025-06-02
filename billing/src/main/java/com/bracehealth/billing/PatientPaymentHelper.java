@@ -1,7 +1,7 @@
 package com.bracehealth.billing;
 
 import com.bracehealth.billing.ClaimStore.ClaimProcessingInfo;
-import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
+import com.bracehealth.shared.CurrencyUtil.CurrencyAmount;
 import com.bracehealth.billing.PatientStore.PatientId;
 import com.bracehealth.shared.SubmitPatientPaymentResponse.SubmitPatientPaymentResult;
 import com.bracehealth.shared.PayerClaim;

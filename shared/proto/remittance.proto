@@ -14,9 +14,9 @@ import "common.proto";
  */
  message Remittance {
     string claim_id = 1;
-    CurrencyAmount payer_paid_amount = 2;
-    CurrencyAmount coinsurance_amount = 3;
-    CurrencyAmount copay_amount = 4;
-    CurrencyAmount deductible_amount = 5;
-    CurrencyAmount not_allowed_amount = 6;
+    CurrencyValue payer_paid_amount = 2;
+    CurrencyValue coinsurance_amount = 3;
+    CurrencyValue copay_amount = 4;
+    CurrencyValue deductible_amount = 5;
+    CurrencyValue not_allowed_amount = 6;
   }

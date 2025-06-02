@@ -38,8 +38,6 @@
     </dependencies>
 
     <build>
-        <!-- Generated sources live here -->
-        <sourceDirectory>${project.build.directory}/generated-sources/protobuf/java</sourceDirectory>
 
         <plugins>
             <!-- Detect OS for protoc binaries -->
