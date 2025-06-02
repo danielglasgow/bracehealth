@@ -45,12 +45,21 @@ public class CurrencyUtil {
         return CurrencyValue.newBuilder().setWholeAmount(whole).setDecimalAmount(decimal).build();
     }
 
+    private static CurrencyValue decimalToProto(int decimal) {
+        if (decimal < 0 || decimal >= SCALE_FACTOR.intValue()) {
+            throw new IllegalArgumentException(
+                    "Decimal must be between 0 and " + SCALE_FACTOR.intValue());
+        }
+        return CurrencyValue.newBuilder().setDecimalAmount(decimal).build();
+    }
+
     public record CurrencyAmount(BigDecimal value) {
         public CurrencyAmount(BigDecimal value) {
             this.value = standardize(value);
         }
 
         public static final CurrencyAmount ZERO = new CurrencyAmount(BigDecimal.ZERO);
+        public static final CurrencyAmount ONE = new CurrencyAmount(BigDecimal.ONE);
 
         public CurrencyValue toProto() {
             return bigDecimalToProto(value);
@@ -64,6 +73,14 @@ public class CurrencyUtil {
         public CurrencyAmount subtract(CurrencyAmount other) {
             BigDecimal newValue = value.subtract(other.value);
             return new CurrencyAmount(newValue);
+        }
+
+        public CurrencyAmount addDecimal(int decimal) {
+            return add(CurrencyAmount.fromProto(decimalToProto(decimal)));
+        }
+
+        public CurrencyAmount subtractDecimal(int decimal) {
+            return subtract(CurrencyAmount.fromProto(decimalToProto(decimal)));
         }
 
         public SubtractUntilZeroResult subtractUntilZero(CurrencyAmount other) {

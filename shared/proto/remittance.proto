@@ -19,4 +19,4 @@ import "common.proto";
     CurrencyValue copay_amount = 4;
     CurrencyValue deductible_amount = 5;
     CurrencyValue not_allowed_amount = 6;
-  }
+}
