@@ -8,7 +8,7 @@ import java.math.RoundingMode;
  * 
  * For now assume everything is USD.
  * 
- * // THis class is a bit ugly...
+ * // This class is a bit ugly...
  */
 
 public class CurrencyUtil {
@@ -24,6 +24,10 @@ public class CurrencyUtil {
         BigDecimal fraction = BigDecimal.valueOf(proto.getDecimalAmount()).divide(SCALE_FACTOR,
                 DECIMAL_PLACES, RoundingMode.UNNECESSARY);
         return whole.add(fraction);
+    }
+
+    private static BigDecimal standardize(BigDecimal value) {
+        return protoToBigDecimal(bigDecimalToProto(value));
     }
 
     /**
@@ -42,22 +46,31 @@ public class CurrencyUtil {
                 .setDecimalAmount(decimal).build();
     }
 
-    public record CurrencyAmount(com.bracehealth.shared.CurrencyAmount proto, BigDecimal value) {
-        public static final CurrencyAmount ZERO = new CurrencyAmount(
-                com.bracehealth.shared.CurrencyAmount.newBuilder().build(), BigDecimal.ZERO);
+    public record CurrencyAmount(BigDecimal value) {
+        public CurrencyAmount(BigDecimal value) {
+            this.value = standardize(value);
+        }
+
+        public static final CurrencyAmount ZERO = new CurrencyAmount(BigDecimal.ZERO);
 
         public com.bracehealth.shared.CurrencyAmount toProto() {
-            return proto;
+            return bigDecimalToProto(value);
         }
 
         public CurrencyAmount add(CurrencyAmount other) {
             BigDecimal newValue = value.add(other.value);
-            return new CurrencyAmount(bigDecimalToProto(newValue), newValue);
+            return new CurrencyAmount(newValue);
         }
 
         public CurrencyAmount subtract(CurrencyAmount other) {
             BigDecimal newValue = value.subtract(other.value);
-            return new CurrencyAmount(bigDecimalToProto(newValue), newValue);
+            return new CurrencyAmount(newValue);
+        }
+
+        public SubtractUntilZeroResult subtractUntilZero(CurrencyAmount other) {
+            return other.isGreaterThan(this)
+                    ? new SubtractUntilZeroResult(CurrencyAmount.ZERO, other.subtract(this))
+                    : new SubtractUntilZeroResult(this.subtract(other), CurrencyAmount.ZERO);
         }
 
         public boolean isEqualTo(CurrencyAmount other) {
@@ -81,7 +94,7 @@ public class CurrencyUtil {
         }
 
         public static CurrencyAmount fromProto(com.bracehealth.shared.CurrencyAmount proto) {
-            return new CurrencyAmount(proto, protoToBigDecimal(proto));
+            return new CurrencyAmount(protoToBigDecimal(proto));
         }
 
         public static CurrencyAmount from(BigDecimal amount) {
@@ -91,5 +104,8 @@ public class CurrencyUtil {
         public static CurrencyAmount from(String amount) {
             return CurrencyAmount.from(new BigDecimal(amount));
         }
+    }
+
+    record SubtractUntilZeroResult(CurrencyAmount value, CurrencyAmount remaining) {
     }
 }

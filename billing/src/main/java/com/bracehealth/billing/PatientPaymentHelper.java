@@ -9,12 +9,12 @@ import com.bracehealth.shared.GetPatientAccountsReceivableResponse.PatientAccoun
 import com.bracehealth.shared.PatientBalance;
 import com.bracehealth.shared.Remittance;
 import com.bracehealth.shared.Patient;
-
-
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -49,7 +49,8 @@ public class PatientPaymentHelper {
             return SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_PAYMENT_APPLIED_BALANCING_OUTSTANDING;
         }
         if (remainingBalance.isEqualTo(CurrencyAmount.ZERO)) {
-            claimStore.addPatientPayment(claimId, outstandingBalance);
+            claimStore.markFullyPaid(claimId, getOriginalOutstandingBalance(claimId).total(),
+                    Instant.now());
             return SubmitPatientPaymentResult.SUBMIT_PATIENT_PAYMENT_RESULT_FULLY_PAID;
         }
         if (remainingBalance.isLessThan(CurrencyAmount.ZERO)) {
@@ -92,7 +93,8 @@ public class PatientPaymentHelper {
     }
 
 
-    private record OutstandingBalance(CurrencyAmount copay, CurrencyAmount coinsurance,
+    @VisibleForTesting
+    record OutstandingBalance(CurrencyAmount copay, CurrencyAmount coinsurance,
             CurrencyAmount deductible) {
 
         CurrencyAmount total() {
@@ -104,10 +106,34 @@ public class PatientPaymentHelper {
                     coinsurance.add(other.coinsurance), deductible.add(other.deductible));
         }
 
+        OutstandingBalance subtractUntilZero(CurrencyAmount amount) {
+            if (amount.isLessThanOrEqualTo(CurrencyAmount.ZERO)
+                    || total().isEqualTo(CurrencyAmount.ZERO)) {
+                return this;
+            }
+            if (copay.isGreaterThan(CurrencyAmount.ZERO)) {
+                var result = copay.subtractUntilZero(amount);
+                var newBalance = new OutstandingBalance(result.value(), coinsurance, deductible);
+                return newBalance.subtractUntilZero(result.remaining());
+            }
+            if (coinsurance.isGreaterThan(CurrencyAmount.ZERO)) {
+                var result = coinsurance.subtractUntilZero(amount);
+                var newBalance = new OutstandingBalance(copay, result.value(), deductible);
+                return newBalance.subtractUntilZero(result.remaining());
+            }
+            if (deductible.isGreaterThan(CurrencyAmount.ZERO)) {
+                var result = deductible.subtractUntilZero(amount);
+                var newBalance = new OutstandingBalance(copay, coinsurance, result.value());
+                return newBalance.subtractUntilZero(result.remaining());
+            }
+            // We should never hit this line because we would have hit the basecase above.
+            // Note: This is a quirk of balances never being negative in this implementation
+            throw new IllegalStateException("Outstanding must be zero: " + total());
+        }
+
     }
 
-
-    private OutstandingBalance getOutstandingPatientBalance(String claimId) {
+    private OutstandingBalance getOriginalOutstandingBalance(String claimId) {
         ClaimProcessingInfo processingInfo = claimStore.getProcessingInfo(claimId);
         if (processingInfo.responseReceivedAt().isEmpty()) {
             return new OutstandingBalance(CurrencyAmount.ZERO, CurrencyAmount.ZERO,
@@ -117,34 +143,15 @@ public class PatientPaymentHelper {
         if (remittance == null) {
             throw new IllegalStateException("Remittance not found for claim ID: " + claimId);
         }
+        return new OutstandingBalance(CurrencyAmount.fromProto(remittance.getCopayAmount()),
+                CurrencyAmount.fromProto(remittance.getCoinsuranceAmount()),
+                CurrencyAmount.fromProto(remittance.getDeductibleAmount()));
+    }
+
+
+    private OutstandingBalance getOutstandingPatientBalance(String claimId) {
+        OutstandingBalance originalBalance = getOriginalOutstandingBalance(claimId);
         CurrencyAmount patientPayment = claimStore.getPatientPayment(claimId);
-        CurrencyAmount[] result = deductInOrder(patientPayment,
-                new CurrencyAmount[] {CurrencyAmount.fromProto(remittance.getCopayAmount()),
-                        CurrencyAmount.fromProto(remittance.getCoinsuranceAmount()),
-                        CurrencyAmount.fromProto(remittance.getDeductibleAmount())});
-        CurrencyAmount copay = result[0];
-        CurrencyAmount coinsurance = result[1];
-        CurrencyAmount deductible = result[2];
-        return new OutstandingBalance(copay, coinsurance, deductible);
+        return originalBalance.subtractUntilZero(patientPayment);
     }
-
-    private static CurrencyAmount[] deductInOrder(CurrencyAmount totalDeduction,
-            CurrencyAmount[] amounts) {
-        return deductInOrder(amounts, totalDeduction, 0);
-    }
-
-    private static CurrencyAmount[] deductInOrder(CurrencyAmount[] amounts,
-            CurrencyAmount deduction, int index) {
-        if (index == amounts.length) {
-            return amounts;
-        }
-        if (amounts[index].isGreaterThanOrEqualTo(deduction)) {
-            amounts[index] = amounts[index].subtract(deduction);
-            return amounts;
-        }
-        CurrencyAmount remainingDeduction = deduction.subtract(amounts[index]);
-        amounts[index] = CurrencyAmount.ZERO;
-        return deductInOrder(amounts, remainingDeduction, index + 1);
-    }
-
 }
