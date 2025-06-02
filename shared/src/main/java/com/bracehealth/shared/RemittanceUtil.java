@@ -10,11 +10,13 @@ import com.bracehealth.shared.CurrencyUtil.CurrencyAmount;
  * provides helpers for generating remittances for testing / simulation purposes.
  **/
 public class RemittanceUtil {
-    private static final Random random = new Random();
-
     private RemittanceUtil() {}
 
 
+    /**
+     * Generates a random remittance for a given claim, by distributing the charges randomly between
+     * each remittance field, such that their total equals the total amount owed.
+     */
     public static Remittance generateRandomRemittance(PayerClaim claim) {
         CurrencyAmount totalAmountOwed = CurrencyAmount.ZERO;
         for (ServiceLine serviceLine : claim.getServiceLinesList()) {
@@ -28,51 +30,51 @@ public class RemittanceUtil {
         CurrencyAmount deductibleAmount = CurrencyAmount.ZERO;
         CurrencyAmount notAllowedAmount = CurrencyAmount.ZERO;
         while (remainingAmountOwed.isGreaterThanOrEqualTo(CurrencyAmount.ONE)) {
-            CurrencyAmount amount = remainingAmountOwed.subtract(CurrencyAmount.ONE);
-            int randomIndex = random.nextInt(5);
+            remainingAmountOwed = remainingAmountOwed.subtract(CurrencyAmount.ONE);
+            int randomIndex = new Random().nextInt(5);
             switch (randomIndex) {
-                case 0 -> payerPaidAmount = payerPaidAmount.add(amount);
-                case 1 -> coinsuranceAmount = coinsuranceAmount.add(amount);
-                case 2 -> copayAmount = copayAmount.add(amount);
-                case 3 -> deductibleAmount = deductibleAmount.add(amount);
-                case 4 -> notAllowedAmount = notAllowedAmount.add(amount);
+                case 0 -> payerPaidAmount = payerPaidAmount.add(CurrencyAmount.ONE);
+                case 1 -> coinsuranceAmount = coinsuranceAmount.add(CurrencyAmount.ONE);
+                case 2 -> copayAmount = copayAmount.add(CurrencyAmount.ONE);
+                case 3 -> deductibleAmount = deductibleAmount.add(CurrencyAmount.ONE);
+                case 4 -> notAllowedAmount = notAllowedAmount.add(CurrencyAmount.ONE);
                 default -> throw new IllegalStateException("Unexpected value: " + randomIndex);
             }
         }
         int deductedCents = 0;
         if (payerPaidAmount.isGreaterThan(CurrencyAmount.ONE)) {
-            int randomDeductedCents = random.nextInt(100);
+            int randomDeductedCents = new Random().nextInt(100);
             deductedCents += randomDeductedCents;
-            payerPaidAmount = payerPaidAmount.subtractDecimal(deductedCents);
+            payerPaidAmount = payerPaidAmount.subtractDecimal(randomDeductedCents);
         }
         if (coinsuranceAmount.isGreaterThan(CurrencyAmount.ONE)) {
-            int randomDeductedCents = random.nextInt(100);
+            int randomDeductedCents = new Random().nextInt(100);
             deductedCents += randomDeductedCents;
-            coinsuranceAmount = coinsuranceAmount.subtractDecimal(deductedCents);
+            coinsuranceAmount = coinsuranceAmount.subtractDecimal(randomDeductedCents);
         }
         if (copayAmount.isGreaterThan(CurrencyAmount.ONE)) {
-            int randomDeductedCents = random.nextInt(100);
+            int randomDeductedCents = new Random().nextInt(100);
             deductedCents += randomDeductedCents;
-            copayAmount = copayAmount.subtractDecimal(deductedCents);
+            copayAmount = copayAmount.subtractDecimal(randomDeductedCents);
         }
         if (deductibleAmount.isGreaterThan(CurrencyAmount.ONE)) {
-            int randomDeductedCents = random.nextInt(100);
+            int randomDeductedCents = new Random().nextInt(100);
             deductedCents += randomDeductedCents;
-            deductibleAmount = deductibleAmount.subtractDecimal(deductedCents);
+            deductibleAmount = deductibleAmount.subtractDecimal(randomDeductedCents);
         }
         if (notAllowedAmount.isGreaterThan(CurrencyAmount.ONE)) {
-            int randomDeductedCents = random.nextInt(100);
+            int randomDeductedCents = new Random().nextInt(100);
             deductedCents += randomDeductedCents;
-            notAllowedAmount = notAllowedAmount.subtractDecimal(deductedCents);
+            notAllowedAmount = notAllowedAmount.subtractDecimal(randomDeductedCents);
         }
         remainingAmountOwed = remainingAmountOwed.addDecimal(deductedCents);
-        int randomIndex = random.nextInt(5);
+        int randomIndex = new Random().nextInt(5);
         switch (randomIndex) {
-            case 0 -> payerPaidAmount = payerPaidAmount.add(totalAmountOwed);
-            case 1 -> coinsuranceAmount = coinsuranceAmount.add(totalAmountOwed);
-            case 2 -> copayAmount = copayAmount.add(totalAmountOwed);
-            case 3 -> deductibleAmount = deductibleAmount.add(totalAmountOwed);
-            case 4 -> notAllowedAmount = notAllowedAmount.add(totalAmountOwed);
+            case 0 -> payerPaidAmount = payerPaidAmount.add(remainingAmountOwed);
+            case 1 -> coinsuranceAmount = coinsuranceAmount.add(remainingAmountOwed);
+            case 2 -> copayAmount = copayAmount.add(remainingAmountOwed);
+            case 3 -> deductibleAmount = deductibleAmount.add(remainingAmountOwed);
+            case 4 -> notAllowedAmount = notAllowedAmount.add(remainingAmountOwed);
             default -> throw new IllegalStateException("Unexpected value: " + randomIndex);
         }
         Remittance remittance = Remittance.newBuilder().setClaimId(claim.getClaimId())

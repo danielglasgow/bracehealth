@@ -39,18 +39,13 @@ public class CurrencyUtil {
         amount = amount.setScale(DECIMAL_PLACES, RoundingMode.DOWN);
         // Shift decimal point right by two places e.g. 123.45 × 100 = 12345
         long units = amount.multiply(SCALE_FACTOR).longValueExact();
-        // Split into "whole" and "decimal"
+        return minUnitToProto((int) units);
+    }
+
+    private static CurrencyValue minUnitToProto(int units) {
         int whole = (int) (units / SCALE_FACTOR.longValue()); // 12345 / 100 = 123
         int decimal = (int) (Math.abs(units % SCALE_FACTOR.longValue())); // 12345 % 100 = 45
         return CurrencyValue.newBuilder().setWholeAmount(whole).setDecimalAmount(decimal).build();
-    }
-
-    private static CurrencyValue decimalToProto(int decimal) {
-        if (decimal < 0 || decimal >= SCALE_FACTOR.intValue()) {
-            throw new IllegalArgumentException(
-                    "Decimal must be between 0 and " + SCALE_FACTOR.intValue());
-        }
-        return CurrencyValue.newBuilder().setDecimalAmount(decimal).build();
     }
 
     public record CurrencyAmount(BigDecimal value) {
@@ -75,12 +70,12 @@ public class CurrencyUtil {
             return new CurrencyAmount(newValue);
         }
 
-        public CurrencyAmount addDecimal(int decimal) {
-            return add(CurrencyAmount.fromProto(decimalToProto(decimal)));
+        public CurrencyAmount addDecimal(int minUnits) {
+            return add(CurrencyAmount.fromProto(minUnitToProto(minUnits)));
         }
 
-        public CurrencyAmount subtractDecimal(int decimal) {
-            return subtract(CurrencyAmount.fromProto(decimalToProto(decimal)));
+        public CurrencyAmount subtractDecimal(int minUnits) {
+            return subtract(CurrencyAmount.fromProto(minUnitToProto(minUnits)));
         }
 
         public SubtractUntilZeroResult subtractUntilZero(CurrencyAmount other) {
