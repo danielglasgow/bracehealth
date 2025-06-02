@@ -12,7 +12,6 @@ import com.bracehealth.shared.Remittance;
 import com.bracehealth.shared.Patient;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -133,6 +132,11 @@ public class PatientPaymentHelper {
             throw new IllegalStateException("Outstanding must be zero: " + total());
         }
 
+        PatientBalance toProto() {
+            return PatientBalance.newBuilder().setOutstandingCopay(copay.toProto())
+                    .setOutstandingCoinsurance(coinsurance.toProto())
+                    .setOutstandingDeductible(deductible.toProto()).build();
+        }
     }
 
     private OutstandingBalance getOriginalOutstandingBalance(String claimId) {
@@ -151,7 +155,7 @@ public class PatientPaymentHelper {
     }
 
 
-    private OutstandingBalance getOutstandingPatientBalance(String claimId) {
+    public OutstandingBalance getOutstandingPatientBalance(String claimId) {
         OutstandingBalance originalBalance = getOriginalOutstandingBalance(claimId);
         CurrencyAmount patientPayment = claimStore.getPatientPayment(claimId);
         return originalBalance.subtractUntilZero(patientPayment);

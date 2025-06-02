@@ -154,6 +154,11 @@ message GetPatientClaimsRequest {
     REMITTENCE_RECEIVED = 2;
     FULLY_PAID = 3;
   }
+  enum GetPatientClaimError {
+    GET_PATIENT_CLAIM_ERROR_UNSPECIFIED = 0;
+    GET_PATIENT_CLAIM_ERROR_PATIENT_NOT_FOUND = 1;
+    GET_PATIENT_CLAIM_ERROR_NO_PATIENT_FILTER_SPECIFIED = 2;
+  }
   message PatientClaimRow {
     Patient patient = 1;
     string claim_id = 2;
@@ -161,6 +166,7 @@ message GetPatientClaimsRequest {
     ClaimStatus status = 4;
   }
   repeated PatientClaimRow row = 1;
+  GetPatientClaimError error = 2;
  }
 
 

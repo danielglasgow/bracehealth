@@ -4,11 +4,15 @@ import com.bracehealth.shared.GetPayerAccountsReceivableRequest;
 import com.bracehealth.shared.GetPayerAccountsReceivableResponse;
 import com.bracehealth.shared.GetPatientAccountsReceivableRequest;
 import com.bracehealth.shared.GetPatientAccountsReceivableResponse;
+import com.bracehealth.shared.GetPatientClaimsRequest;
+import com.bracehealth.shared.GetPatientClaimsResponse;
+import com.bracehealth.shared.GetPatientClaimsResponse.PatientClaimRow;
 import com.bracehealth.shared.NotifyRemittanceRequest;
 import com.bracehealth.shared.Remittance;
 import com.bracehealth.shared.NotifyRemittanceResponse;
 import com.bracehealth.shared.NotifyRemittanceResponse.NotifyRemittanceResult;
 import com.bracehealth.shared.Patient;
+import com.bracehealth.shared.PatientBalance;
 import com.bracehealth.shared.SubmitPatientPaymentRequest;
 import com.bracehealth.shared.SubmitPatientPaymentResponse;
 import com.bracehealth.shared.SubmitPatientPaymentResponse.SubmitPatientPaymentResult;
@@ -19,6 +23,7 @@ import com.bracehealth.shared.ProcessClaimRequest;
 import com.bracehealth.shared.ProcessClaimResponse;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerId;
+import com.bracehealth.billing.ClaimStore.ClaimProcessingInfo;
 import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
 import com.bracehealth.billing.PatientStore.PatientId;
 import com.bracehealth.shared.AccountsReceivableBucket;
@@ -31,6 +36,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
@@ -137,6 +144,58 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
                 patientPayments.getPatientAccountsReceivable(patientIds);
         observer.onNext(response);
         observer.onCompleted();
+    }
+
+    @Override
+    public void getPatientClaims(GetPatientClaimsRequest request,
+            StreamObserver<GetPatientClaimsResponse> observer) {
+        logger.info("Received patient claims request");
+        GetPatientClaimsResponse response = getPatientClaimsInternal(request.getPatientFilter());
+        observer.onNext(response);
+        observer.onCompleted();
+    }
+
+    private GetPatientClaimsResponse getPatientClaimsInternal(String patientIdFilter) {
+        if (patientIdFilter == null || patientIdFilter.isEmpty()) {
+            return GetPatientClaimsResponse.newBuilder().setError(
+                    GetPatientClaimsResponse.GetPatientClaimError.GET_PATIENT_CLAIM_ERROR_NO_PATIENT_FILTER_SPECIFIED)
+                    .build();
+        }
+        PatientId patientId = PatientId.parse(patientIdFilter);
+        if (!patientStore.containsPatient(patientId)) {
+            return GetPatientClaimsResponse.newBuilder().setError(
+                    GetPatientClaimsResponse.GetPatientClaimError.GET_PATIENT_CLAIM_ERROR_PATIENT_NOT_FOUND)
+                    .build();
+        }
+        Patient patient = patientStore.getPatient(patientId);
+        List<PatientClaimRow> rows = new ArrayList<>();
+        for (PayerClaim claim : claimStore.getPatientClaims(patientId)) {
+            rows.add(createPatientClaimRow(patient, claim));
+        }
+        return GetPatientClaimsResponse.newBuilder().addAllRow(rows).build();
+    }
+
+    private PatientClaimRow createPatientClaimRow(Patient patient, PayerClaim claim) {
+        PatientClaimRow.Builder row =
+                PatientClaimRow.newBuilder().setPatient(patient).setClaimId(claim.getClaimId());
+        ClaimProcessingInfo processingInfo = claimStore.getProcessingInfo(claim.getClaimId());
+        if (processingInfo.closedAt().isPresent()) {
+            return row.setStatus(GetPatientClaimsResponse.ClaimStatus.FULLY_PAID)
+                    .setBalance(zeroOutstandingBalance()).build();
+        }
+        if (processingInfo.responseReceivedAt().isPresent()) {
+            return row.setStatus(GetPatientClaimsResponse.ClaimStatus.REMITTENCE_RECEIVED)
+                    .setBalance(patientPayments.getOutstandingPatientBalance(claim.getClaimId())
+                            .toProto())
+                    .build();
+        }
+        return row.setStatus(GetPatientClaimsResponse.ClaimStatus.SUBMITTED_TO_PAYER).build();
+    }
+
+    private static PatientBalance zeroOutstandingBalance() {
+        return PatientBalance.newBuilder().setOutstandingCopay(CurrencyAmount.ZERO.toProto())
+                .setOutstandingCoinsurance(CurrencyAmount.ZERO.toProto())
+                .setOutstandingDeductible(CurrencyAmount.ZERO.toProto()).build();
     }
 
     @Override
