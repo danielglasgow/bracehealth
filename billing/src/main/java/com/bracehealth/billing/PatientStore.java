@@ -2,11 +2,12 @@ package com.bracehealth.billing;
 
 import java.util.HashMap;
 import java.util.Map;
-
+import org.springframework.stereotype.Component;
 import com.bracehealth.shared.Patient;
 import com.google.common.collect.ImmutableSet;
 
 /** Keeps track of all patients known to the system. */
+@Component
 public class PatientStore {
     private final Map<PatientId, Patient> patients;
 

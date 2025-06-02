@@ -18,15 +18,19 @@ import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
-import static java.util.function.Function.identity;;
+import static java.util.function.Function.identity;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 /**
  * Helper for calculating payer accounts receivable.
  */
+@Component
 public class PayerPaymentHelper {
 
     private final ClaimStore claimStore;
 
+    @Autowired
     public PayerPaymentHelper(ClaimStore claimStore) {
         this.claimStore = claimStore;
     }

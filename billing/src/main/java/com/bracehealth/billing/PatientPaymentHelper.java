@@ -15,6 +15,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,12 +26,14 @@ import java.util.stream.Collectors;
  * Helper for handling patient payments, including updating the patient's balance, and displaying
  * Accounts Receivable across claims.
  */
+@Component
 public class PatientPaymentHelper {
     private static final Logger logger = LoggerFactory.getLogger(PatientPaymentHelper.class);
 
     private final ClaimStore claimStore;
     private final PatientStore patientStore;
 
+    @Autowired
     public PatientPaymentHelper(ClaimStore claimStore, PatientStore patientStore) {
         this.claimStore = claimStore;
         this.patientStore = patientStore;

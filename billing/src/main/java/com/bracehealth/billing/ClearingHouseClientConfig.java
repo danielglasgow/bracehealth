@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Primary;
 import com.bracehealth.shared.ProcessClaimRequest;
 import com.bracehealth.shared.ProcessClaimResponse;
 import com.bracehealth.shared.ClearingHouseServiceGrpc;
+import com.bracehealth.shared.BillingServiceGrpc;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 
 @Configuration
@@ -42,10 +43,9 @@ public class ClearingHouseClientConfig {
     @ConditionalOnProperty(name = "clearinghouse.mode", havingValue = "inmemory",
             matchIfMissing = true)
     public ClearingHouseClient inMemoryClearingHouseClient(
-            com.bracehealth.shared.BillingServiceGrpc.BillingServiceBlockingStub billingService) {
-        return new InMemoryClearingHouseClient(billingService);
+            BillingServiceGrpc.BillingServiceBlockingStub billingServiceStub) {
+        return new InMemoryClearingHouseClient(billingServiceStub);
     }
-
 
     @GrpcClient("clearinghouse-service")
     private ClearingHouseServiceGrpc.ClearingHouseServiceBlockingStub clearingHouseStub;
@@ -55,5 +55,12 @@ public class ClearingHouseClientConfig {
         return clearingHouseStub;
     }
 
+    // Loopback call to self
+    @GrpcClient("billing-service")
+    private BillingServiceGrpc.BillingServiceBlockingStub billingServiceStub;
 
+    @Bean
+    public BillingServiceGrpc.BillingServiceBlockingStub billingServiceStub() {
+        return billingServiceStub;
+    }
 }
