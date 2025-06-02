@@ -6,7 +6,6 @@ option java_multiple_files = true;
 option java_package = "com.bracehealth.shared";
 
 import "payer_claim.proto";
-import "remittance.proto";
 
 /**
  * Psuedo implementation of a clearinghouse.

@@ -170,6 +170,3 @@ message GetPatientClaimsRequest {
   GetPatientClaimError error = 2;
  }
 
-
- /////////////////// Shared types /////////////////////////////////////////
-
