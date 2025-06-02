@@ -8,11 +8,10 @@ import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceiva
 import com.bracehealth.shared.ServiceLine;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerId;
-import com.bracehealth.shared.CurrencyAmount;
+import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
@@ -66,11 +65,11 @@ public class PayerPaymentHelper {
                     .map(info -> claimStore.getClaim(info.claimId())).collect(toImmutableList());
             ImmutableList<CurrencyAmount> charges = claimsInBucket.stream().flatMap(
                     claim -> claim.getServiceLinesList().stream().map(ServiceLine::getCharge))
-                    .collect(toImmutableList());
-            BigDecimal amount = charges.stream().map(CurrencyUtil::fromProto)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .map(CurrencyAmount::fromProto).collect(toImmutableList());
+            CurrencyAmount amount =
+                    charges.stream().reduce(CurrencyAmount.ZERO, CurrencyAmount::add);
             rowBuilder.addBucketValue(AccountsReceivableBucketValue.newBuilder().setBucket(bucket)
-                    .setAmount(CurrencyUtil.toProto(amount)).build());
+                    .setAmount(amount.toProto()).build());
         }
         return rowBuilder.build();
     }

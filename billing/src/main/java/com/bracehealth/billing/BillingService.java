@@ -19,6 +19,7 @@ import com.bracehealth.shared.ProcessClaimRequest;
 import com.bracehealth.shared.ProcessClaimResponse;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerId;
+import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
 import com.bracehealth.shared.BillingServiceGrpc;
 import com.google.common.collect.ImmutableList;
 import io.grpc.stub.StreamObserver;
@@ -123,7 +124,7 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
     public void submitPatientPayment(SubmitPatientPaymentRequest request,
             StreamObserver<SubmitPatientPaymentResponse> observer) {
         SubmitPatientPaymentResult result = patientPayments.payClaim(request.getClaimId(),
-                CurrencyUtil.fromProto(request.getAmount()));
+                CurrencyAmount.fromProto(request.getAmount()));
         observer.onNext(SubmitPatientPaymentResponse.newBuilder().setResult(result).build());
         observer.onCompleted();
     }

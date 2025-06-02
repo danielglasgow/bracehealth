@@ -38,4 +38,8 @@ mvn test -Dtest=ClaimStoreTest
 mvn test -Dtest=BillingServiceTest
 ```
 
-(Weird race conditions, maybe, again)
+or to run a single test case:
+
+```
+mvn test -Dtest=BillingServiceTest#submitPatientPayment_amountExceedsBalance
+```

@@ -14,7 +14,7 @@ import org.springframework.context.event.ContextClosedEvent;
 import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.math.BigDecimal;
+import com.bracehealth.billing.CurrencyUtil.CurrencyAmount;
 
 /**
  * Stores (in memory) claims that have been submitted.
@@ -28,7 +28,7 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
     private final ConcurrentMap<String, PayerClaim> pendingClaims;
     private final ConcurrentMap<String, ClaimProcessingInfo> processingInfo;
     private final ConcurrentMap<String, Remittance> remittances;
-    private final ConcurrentMap<String, BigDecimal> patientPayments;
+    private final ConcurrentMap<String, CurrencyAmount> patientPayments;
     private final ConcurrentMap<Patient, ImmutableList<PayerClaim>> claimsByPatient;
     private final ConcurrentMap<PayerId, ImmutableList<PayerClaim>> claimsByPayer;
 
@@ -88,7 +88,7 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         pendingClaims.remove(claimId);
     }
 
-    public void addPatientPayment(String claimId, BigDecimal amount) {
+    public void addPatientPayment(String claimId, CurrencyAmount amount) {
         checkClaimExists(claimId);
         if (patientPayments.containsKey(claimId)) {
             patientPayments.computeIfPresent(claimId, (id, payment) -> payment.add(amount));
@@ -105,8 +105,8 @@ public class ClaimStore implements ApplicationListener<ContextClosedEvent> {
         return remittances.get(claimId);
     }
 
-    public BigDecimal getPatientPayment(String claimId) {
-        return patientPayments.getOrDefault(claimId, BigDecimal.ZERO);
+    public CurrencyAmount getPatientPayment(String claimId) {
+        return patientPayments.getOrDefault(claimId, CurrencyAmount.ZERO);
     }
 
     public ImmutableMap<String, PayerClaim> getClaims() {
