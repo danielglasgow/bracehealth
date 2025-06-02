@@ -36,7 +36,7 @@ public class CurrencyUtil {
      */
     private static com.bracehealth.shared.CurrencyAmount bigDecimalToProto(BigDecimal amount) {
         // Ensure exactly two decimals (e.g. 123.450 → 123.45)
-        amount = amount.setScale(DECIMAL_PLACES, RoundingMode.UNNECESSARY);
+        amount = amount.setScale(DECIMAL_PLACES, RoundingMode.DOWN);
         // Shift decimal point right by two places e.g. 123.45 × 100 = 12345
         long units = amount.multiply(SCALE_FACTOR).longValueExact();
         // Split into “whole” and “decimal”
