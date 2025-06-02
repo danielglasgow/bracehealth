@@ -161,6 +161,11 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
                     GetPatientClaimsResponse.GetPatientClaimError.GET_PATIENT_CLAIM_ERROR_NO_PATIENT_FILTER_SPECIFIED)
                     .build();
         }
+        if (!PatientId.isValid(patientIdFilter)) {
+            return GetPatientClaimsResponse.newBuilder().setError(
+                    GetPatientClaimsResponse.GetPatientClaimError.GET_PATIENT_CLAIM_ERROR_INVALID_PATIENT_ID)
+                    .build();
+        }
         PatientId patientId = PatientId.parse(patientIdFilter);
         if (!patientStore.containsPatient(patientId)) {
             return GetPatientClaimsResponse.newBuilder().setError(

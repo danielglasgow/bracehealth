@@ -48,9 +48,17 @@ public class PatientStore {
     }
 
     public record PatientId(String firstName, String lastName, String dob) {
+        public String toString() {
+            return firstName + "_" + lastName + "_" + dob;
+        }
+
         static PatientId from(Patient patient) {
             return new PatientId(patient.getFirstName().toLowerCase(),
                     patient.getLastName().toLowerCase(), patient.getDob());
+        }
+
+        static boolean isValid(String id) {
+            return id.split("_").length == 3;
         }
 
         static PatientId parse(String id) {
