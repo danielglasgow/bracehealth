@@ -1,11 +1,45 @@
 import os
 from datetime import datetime
 import grpc
+from pydantic import BaseModel
 
 from generated import billing_service_pb2, common_pb2
 
 
 CURRENCY_FMT = "${:,.2f}"  # show dollar amounts with cents and commas
+
+# start seconds ago, end seconds ago
+SLOW_BUCKETS: list[tuple[str, int, int]] = [
+    ("0-1 min", 60, 0),
+    ("1-2 min", 120, 60),
+    ("2-3 min", 180, 120),
+    ("3+ min", 0, 180),
+]
+
+# start seconds ago, end seconds ago
+FAST_BUCKETS: list[tuple[str, int, int]] = [
+    ("0-10s", 10, 0),
+    ("10-20s", 20, 10),
+    ("20-30s", 30, 20),
+    ("30+s", 0, 30),
+]
+
+# start seconds ago, end seconds ago
+LIGHTNING_BUCKETS: list[tuple[str, int, int]] = [
+    ("0-1s", 1, 0),
+    ("1-2s", 2, 1),
+    ("2-3s", 3, 2),
+    ("3+s", 0, 3),
+]
+
+
+class DashboardState(BaseModel):
+    last_updated_time: datetime
+    last_patients_ar_response: billing_service_pb2.GetPatientAccountsReceivableResponse
+    last_aging_ar_response: billing_service_pb2.GetPayerAccountsReceivableResponse
+
+    # Allows for the grpc types
+    model_config = {"arbitrary_types_allowed": True}
 
 
 def _pad(value: str, width: int) -> str:
@@ -128,9 +162,7 @@ def _get_failed_claims(
 
 def render_dashboard(
     interval: float,
-    last_updated_time: datetime,
-    ar_resp: billing_service_pb2.GetPayerAccountsReceivableResponse,
-    pt_resp: billing_service_pb2.GetPatientAccountsReceivableResponse,
+    state: DashboardState,
     buckets: list[tuple[str, int, int]],
     claim_responses: dict[str, billing_service_pb2.SubmitClaimResponse | grpc.RpcError],
 ) -> None:
@@ -138,13 +170,13 @@ def render_dashboard(
     print(
         f"== Brace Health - Real-time (updated every {interval:.1f}s) Billing Monitor =="
     )
-    print(f"Last udpated at {last_updated_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Last udpated at {state.last_updated_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print(
         f"Successfully submitted claim count: {len(_get_successful_claims(claim_responses))}"
     )
     print(f"Failed claim count: {len(_get_failed_claims(claim_responses))}")
 
     print("\nAR aging by payer\n")
-    print(_render_aging_table(ar_resp, buckets))
+    print(_render_aging_table(state.last_aging_ar_response, buckets))
     print("\nPatient-responsibility summary\n")
-    # print(_render_patient_table(pt_resp))
+    print(_render_patient_table(state.last_patients_ar_response))

@@ -49,7 +49,7 @@ pip freeze > requirements.txt
 ## Test
 
 ```
-pytest test_submit_claims.py -v
+pytest test_claim_util.py -v
 ```
 
 ## Generate

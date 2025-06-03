@@ -1,12 +1,18 @@
 import datetime
 from pathlib import Path
 import signal
-from pydantic import BaseModel
 import queue
 import time
 import grpc
-from dashboard import render_dashboard
+from dashboard import (
+    render_dashboard,
+    DashboardState,
+    SLOW_BUCKETS,
+    FAST_BUCKETS,
+    LIGHTNING_BUCKETS,
+)
 from billing_client import BillingClient
+from task import BackgroundTask
 from claim_util import generate_random_claim, json_to_claim
 import json
 import sys
@@ -14,92 +20,9 @@ import traceback
 
 from generated import billing_service_pb2, payer_claim_pb2
 
-import threading
-from typing import Any, Callable, Literal, Optional, TextIO, Union
+from typing import Literal, Optional, TextIO, Union
 
 import os
-
-CLS = "cls" if os.name == "nt" else "clear"
-
-# start seconds ago, end seconds ago
-SLOW_BUCKETS: list[tuple[str, int, int]] = [
-    ("0-1 min", 60, 0),
-    ("1-2 min", 120, 60),
-    ("2-3 min", 180, 120),
-    ("3+ min", 0, 180),
-]
-
-# start seconds ago, end seconds ago
-FAST_BUCKETS: list[tuple[str, int, int]] = [
-    ("0-10s", 10, 0),
-    ("10-20s", 20, 10),
-    ("20-30s", 30, 20),
-    ("30+s", 0, 30),
-]
-
-# start seconds ago, end seconds ago
-LIGHTNING_BUCKETS: list[tuple[str, int, int]] = [
-    ("0-1s", 1, 0),
-    ("1-2s", 2, 1),
-    ("2-3s", 3, 2),
-    ("3+s", 0, 3),
-]
-
-
-def _clear():
-    os.system(CLS)
-
-
-class BackgroundTask:
-    def __init__(self, work_fn: Callable):
-        self.work_fn = work_fn
-        self.work_rate_seconds = 1
-        self.stop = threading.Event()
-        self.thread: Optional[threading.Thread] = None
-
-    def start(self, on_stop: Callable[[], None] | None = None, fn_args: list[Any] = []):
-        if self.thread and self.thread.is_alive():
-            return
-        self.stop.clear()
-        self.thread = threading.Thread(target=self.run, args=(on_stop, fn_args))
-        self.thread.daemon = True
-        self.thread.start()
-
-    def run(self, on_stop: Callable[[], None] | None = None, fn_args: list[Any] = []):
-        try:
-            while not self.stop.is_set():
-                self.work_fn(*fn_args)
-                time.sleep(self.work_rate_seconds)
-        finally:
-            if on_stop:
-                on_stop()
-
-    def is_running(self):
-        return self.thread and self.thread.is_alive()
-
-    def set_work_rate(self, work_rate_seconds: float):
-        if work_rate_seconds < 0.1:
-            raise ValueError("Work rate must be greater than 0.1 seconds")
-        self.work_rate_seconds = work_rate_seconds
-
-    def request_stop(self, timeout: float = 1):
-        self.stop.set()
-        if self.thread and self.thread.is_alive():
-            print(f"Stopping {self.work_fn.__name__}")
-            self.thread.join(timeout=timeout)
-
-
-class DashboardState(BaseModel):
-    last_updated_time: datetime.datetime
-    last_patients_ar_response: Optional[
-        billing_service_pb2.GetPatientAccountsReceivableResponse
-    ]
-    last_aging_ar_response: Optional[
-        billing_service_pb2.GetPayerAccountsReceivableResponse
-    ]
-
-    # Allows for the grpc types
-    model_config = {"arbitrary_types_allowed": True}
 
 
 class App:
@@ -130,7 +53,7 @@ class App:
             self.active_ui = "main_menu"
 
     def _print_menu(self):
-        _clear()
+        os.system("clear" if os.name == "posix" else "cls")
         print(
             "BraceHealth Billing CLI\n"
             "────────────────────────\n"
@@ -331,9 +254,7 @@ class App:
             else:
                 render_dashboard(
                     rate,
-                    self.dashboard_state.last_updated_time,
-                    self.dashboard_state.last_aging_ar_response,
-                    self.dashboard_state.last_patients_ar_response,
+                    self.dashboard_state,
                     self.dashboard_buckets,
                     self.submit_claim_responses,
                 )

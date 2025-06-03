@@ -1,6 +1,6 @@
 import pytest
-from generated import billing_pb2
-from submit_claims import json_to_payer_claim
+from generated import payer_claim_pb2
+from claim_util import json_to_claim
 
 
 def _valid_json() -> dict:
@@ -69,19 +69,19 @@ def _valid_json() -> dict:
     }
 
 
-def test_json_to_payer_claim_success():
-    result = json_to_payer_claim(_valid_json())
+def test_json_to_claim_success():
+    result = json_to_claim(_valid_json())
 
-    assert isinstance(result, billing_pb2.PayerClaim)
+    assert isinstance(result, payer_claim_pb2.PayerClaim)
 
     # Not sure if the rest of these are worthwhile, they are kind of just "change detector tests"
     # Would be nice to just have a test per field based on if it's required or not and testing any validation logic
     assert result.claim_id == "CLM1234567"
     assert result.place_of_service_code == 11
-    assert result.insurance.payer_id == billing_pb2.PayerId.MEDICARE
+    assert result.insurance.payer_id == payer_claim_pb2.PayerId.MEDICARE
     assert result.patient.first_name == "Jane"
     assert result.patient.last_name == "Doe"
-    assert result.patient.gender == billing_pb2.Gender.F
+    assert result.patient.gender == payer_claim_pb2.Gender.F
     assert result.patient.dob == "1980-05-15"
     assert len(result.service_lines) == 2
     assert result.service_lines[0].procedure_code == "99213"
@@ -98,7 +98,7 @@ def test_invalid_gender_fails():
     claim["patient"]["gender"] = "X"
 
     with pytest.raises(ValueError, match="Invalid gender: X"):
-        json_to_payer_claim(claim)
+        json_to_claim(claim)
 
 
 def test_invalid_date_fails():
@@ -106,7 +106,7 @@ def test_invalid_date_fails():
     claim["patient"]["dob"] = "01-01-1990"
 
     with pytest.raises(ValueError, match="Invalid date: 01-01-1990"):
-        json_to_payer_claim(claim)
+        json_to_claim(claim)
 
 
 def test_missing_field_fails():
@@ -114,4 +114,4 @@ def test_missing_field_fails():
     del claim["claim_id"]
 
     with pytest.raises(KeyError):
-        json_to_payer_claim(claim)
+        json_to_claim(claim)

@@ -1,7 +1,23 @@
 import random
 from generated import payer_claim_pb2, common_pb2
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import string
+
+
+def _get_gender_enum(gender: str) -> payer_claim_pb2.Gender:
+    mapping = {"m": payer_claim_pb2.Gender.M, "f": payer_claim_pb2.Gender.F}
+    try:
+        return mapping[gender.lower()]
+    except KeyError:
+        raise ValueError(f"Invalid gender: {gender}")
+
+
+def _validate_date(date: str) -> str:
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+        return date
+    except ValueError:
+        raise ValueError(f"Invalid date: {date}")
 
 
 def json_to_claim(j: dict) -> payer_claim_pb2.PayerClaim:
@@ -23,10 +39,26 @@ def json_to_claim(j: dict) -> payer_claim_pb2.PayerClaim:
     patient = payer_claim_pb2.Patient(
         first_name=p["first_name"],
         last_name=p["last_name"],
-        gender=gender_map[p["gender"].lower()],
-        dob=p["dob"],
+        gender=_get_gender_enum(p["gender"]),
+        dob=_validate_date(p["dob"]),
     )
-    org = payer_claim_pb2.Organization(name=j["organization"]["name"])
+    org = payer_claim_pb2.Organization(
+        name=j["organization"]["name"],
+        billing_npi=j["organization"]["billing_npi"],
+        ein=j["organization"]["ein"],
+        contact=payer_claim_pb2.Contact(
+            first_name=j["organization"]["contact"]["first_name"],
+            last_name=j["organization"]["contact"]["last_name"],
+            phone_number=j["organization"]["contact"]["phone_number"],
+        ),
+        address=payer_claim_pb2.Address(
+            street=j["organization"]["address"]["street"],
+            city=j["organization"]["address"]["city"],
+            state=j["organization"]["address"]["state"],
+            zip=j["organization"]["address"]["zip"],
+            country=j["organization"]["address"]["country"],
+        ),
+    )
     provider = payer_claim_pb2.RenderingProvider(
         first_name=j["rendering_provider"]["first_name"],
         last_name=j["rendering_provider"]["last_name"],
