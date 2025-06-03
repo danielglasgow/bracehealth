@@ -144,16 +144,24 @@ class App:
         self.active_ui = "submit_claims"
         first = True
         while self.active_ui == "submit_claims":
-            try:
-                message = self.submit_message_queue.get(timeout=0.2)
-            except queue.Empty:
+            messages = []
+            # By draining the queue all at once, we avoid a flickering effect when redrawing the Ctrl+C prompt.
+            # (This is because we end up re-drawing the screen less often.)
+            while True:
+                try:
+                    message = self.submit_message_queue.get(timeout=0.2)
+                    messages.append(message)
+                except queue.Empty:
+                    break
+            if len(messages) == 0:
                 continue
+            messages.append("Press Ctrl+C to return to main menu.")
+            message = "\n".join(messages)
             if not first:
                 sys.stdout.write("\033[F\033[K")  # move up 1 line, wipe it
             else:
                 first = False
             print(message)
-            print("Press Ctrl+C to return to main menu.")
             sys.stdout.flush()  # immediate redraw
 
     def _submit_claim(self):
