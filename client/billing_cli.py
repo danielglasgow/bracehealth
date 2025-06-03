@@ -31,7 +31,6 @@ import os
 import queue
 import random
 import signal
-import sys
 import threading
 import time
 from datetime import datetime
@@ -171,7 +170,7 @@ class BillingClient:
         ids: List[str] = []
         for row in resp.row:
             ids.append(
-                f"{row.patient.first_name}_{row.patient.last_name}_{row.patient.dob}"
+                f"{row.patient.first_name.lower()}_{row.patient.last_name.lower()}_{row.patient.dob.lower()}"
             )
         return sorted(set(ids))
 
@@ -545,14 +544,40 @@ class CLI:
             )
 
     def show_patient_claims(self):
-        patient_id = _input("Patient filter (first_last_dob): ").strip()
-        if not patient_id:
-            print("✖ required")
+        """Show claims for a selected patient."""
+        # Get list of patients
+        patients = self.client.list_patients()
+        if not patients:
+            print("No patients found")
             return
+
+        # Show patient list
+        print("\nSelect a patient:")
+        for i, patient_id in enumerate(patients, 1):
+            first, last, dob = patient_id.split("_")
+            print(f"{i:2d}  {first} {last} (DOB: {dob})")
+
+        # Get selection
+        choice = _input("\nSelect patient number (or 'back'): ").strip()
+        if choice.lower() == "back":
+            return
+
+        try:
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(patients):
+                print("✖ invalid selection")
+                return
+            patient_id = patients[idx]
+        except ValueError:
+            print("✖ invalid number")
+            return
+
+        # Show claims for selected patient
+        print(f"\nClaims for {patient_id}:")
         resp = self.client.patient_claims(patient_id)
         if not resp:
             return
-        print("CLAIM ID     | STATUS                | BALANCE")
+        print("\nCLAIM ID     | STATUS                | BALANCE")
         print("-------------|-----------------------|-------------")
         for row in resp.row:
             bal = row.balance
@@ -658,9 +683,6 @@ class CLI:
         self.stop_generating_claims()
         if self.submit_thread and self.submit_thread.is_alive():
             self.submit_thread.join(timeout=1)
-        if self.dash_thread and self.dash_thread.is_alive():
-            self.dash_stop.set()
-            self.dash_thread.join(timeout=1)
         self.client.channel.close()
         print("👋  goodbye")
 
