@@ -5,10 +5,12 @@ from pydantic import BaseModel
 import queue
 import time
 import grpc
+from dashboard import render_dashboard
 from billing_client import BillingClient
 from claim_util import generate_random_claim, json_to_claim
 import json
 import sys
+import traceback
 
 from generated import billing_service_pb2, payer_claim_pb2
 
@@ -18,6 +20,13 @@ from typing import Any, Callable, Literal, Optional, TextIO, Union
 import os
 
 CLS = "cls" if os.name == "nt" else "clear"
+
+DEFAULT_BUCKETS: list[tuple[str, Optional[int], Optional[int]]] = [
+    (60, 0),
+    (120, 60),
+    (180, 120),
+    (None, 180),
+]
 
 
 def _clear():
@@ -52,7 +61,7 @@ class BackgroundTask:
         return self.thread and self.thread.is_alive()
 
     def set_work_rate(self, work_rate_seconds: float):
-        if work_rate_seconds <= 0.1:
+        if work_rate_seconds < 0.1:
             raise ValueError("Work rate must be greater than 0.1 seconds")
         self.work_rate_seconds = work_rate_seconds
 
@@ -65,18 +74,15 @@ class BackgroundTask:
 
 class DashboardState(BaseModel):
     last_updated_time: datetime.datetime
-    ar_by_payer: dict[str, float]
-    ar_by_patient: dict[str, float]
+    last_patients_ar_response: Optional[
+        billing_service_pb2.GetPatientAccountsReceivableResponse
+    ]
+    last_aging_ar_response: Optional[
+        billing_service_pb2.GetPayerAccountsReceivableResponse
+    ]
 
-
-class AppState:
-    def __init__(self):
-        self.claim_submit_rate_seconds = 1  # How fast to drain the claim queue
-        self.dashboard_refresh_rate_seconds = 1
-        self.submit_claim_responses: dict[
-            str, Union[billing_service_pb2.SubmitClaimResponse, grpc.RpcError]
-        ] = {}
-        self.dashboard_state: Optional[DashboardState] = None
+    # Allows for the grpc types
+    model_config = {"arbitrary_types_allowed": True}
 
 
 class App:
@@ -87,12 +93,16 @@ class App:
         self.client = BillingClient()
         self.submit_queue: queue.Queue[payer_claim_pb2.PayerClaim] = queue.Queue()
         self.submit_message_queue: queue.Queue[str] = queue.Queue()
-        self.state = AppState()
         self.submit_task = BackgroundTask(self._submit_claim)
         self.read_claims_from_file_task = BackgroundTask(self._read_claims_from_file)
         self.generate_random_claims_task = BackgroundTask(self._generate_random_claims)
         self.refresh_dashboard_task = BackgroundTask(self._refresh_dashboard)
         self.file_path: Optional[Path] = None
+        self.claims_submitted: int = 0
+        self.submit_claim_responses: dict[
+            str, Union[billing_service_pb2.SubmitClaimResponse, grpc.RpcError]
+        ] = {}
+        self.dashboard_state: Optional[DashboardState] = None
 
     def on_signal(self, signum, frame):
         if self.active_ui == "main_menu":
@@ -125,6 +135,10 @@ class App:
             "Generate random claims: ",
             "Active" if self.generate_random_claims_task.is_running() else "Inactive",
         )
+        print(
+            "Dashboard data fetch: ",
+            "Active" if self.refresh_dashboard_task.is_running() else "Inactive",
+        )
         print("\nMain menu\n")
         print(" 1  Submit claims from file")
         print(" 2  Stop submitting claims from file")
@@ -136,6 +150,9 @@ class App:
         print()
 
     def start(self):
+        self.submit_task.set_work_rate(
+            0.1  # Drain claims as soon as their posted but avoid busy waiting
+        )
         self.submit_task.start()  # For now always keep submit task running
         while True:
             self.active_ui = "main_menu"
@@ -204,7 +221,7 @@ class App:
         self.submit_message_queue.put(f"Submitting claim {claim.claim_id}")
         resp = self.client.submit_claim(claim)
         self.submit_message_queue.put(f"Response: {resp}")
-        self.state.submit_claim_responses[claim.claim_id] = resp
+        self.submit_claim_responses[claim.claim_id] = resp
         self.submit_queue.task_done()
         return False
 
@@ -220,7 +237,11 @@ class App:
         self.submit_queue.put(json_to_claim(claim))
 
     def _refresh_dashboard(self):
-        pass
+        self.dashboard_state = DashboardState(
+            last_updated_time=datetime.datetime.now(),
+            last_patients_ar_response=self.client.ar_by_patient(),
+            last_aging_ar_response=self.client.ar_by_payer(DEFAULT_BUCKETS),
+        )
 
     def submit_from_file(self):
         if self.read_claims_from_file_task.is_running():
@@ -266,13 +287,35 @@ class App:
             print("No claims are being generated")
 
     def show_dashboard(self):
-        pass
+        rate_s = input("Seconds between dashboard refreshes: ").strip() or "1"
+        rate = float(rate_s)
+        self.refresh_dashboard_task.set_work_rate(rate)
+        self.refresh_dashboard_task.start()
+        self.active_ui = "dashboard"
+        print("Waiting for dashboard data", end="", flush=True)
+        while self.active_ui == "dashboard":
+            if self.dashboard_state is None:
+                print(".", end="", flush=True)
+            else:
+                render_dashboard(
+                    rate,
+                    self.dashboard_state.last_updated_time,
+                    self.dashboard_state.last_aging_ar_response,
+                    self.dashboard_state.last_patients_ar_response,
+                )
+            time.sleep(0.1)  # Repaint every 100ms
 
 
 def main():
     app = App()
     signal.signal(signal.SIGINT, app.on_signal)
-    app.start()
+    try:
+        app.start()
+    except Exception as e:
+        print("Error occurred:")
+        traceback.print_exc()
+        app.shutdown()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
