@@ -279,6 +279,26 @@ def _load_claims_worker(
         stats.active = False
 
 
+def _generate_claims_worker(
+    q: "queue.Queue[pc_pb2.PayerClaim]",
+    rate: float,
+    num_claims: int,
+    stats: SimpleNamespace,
+    stop: threading.Event,
+):
+    """Generates random claims and adds them to the queue at the specified rate."""
+    try:
+        seq = 0
+        while not stop.is_set() and (num_claims < 0 or seq < num_claims):
+            q.put(_rand_claim(seq))
+            seq += 1
+            time.sleep(rate)
+    except Exception as e:
+        print(f"❌ Error generating claims: {e}")
+    finally:
+        stats.active = False
+
+
 def _dashboard_worker(
     client: BillingClient,
     stats: SimpleNamespace,
@@ -358,21 +378,27 @@ class CLI:
         self.submit_stats = SimpleNamespace(active=False, count=0, last_claim_id="-")
         self.submit_thread: Optional[threading.Thread] = None
         self.dash_refresh_rate = DASH_INTERVAL  # Default refresh rate
+        self.load_thread: Optional[threading.Thread] = None
+        self.generate_thread: Optional[threading.Thread] = None
+        self.load_stop = threading.Event()
+        self.generate_stop = threading.Event()
 
     # ---------- menu ---------- #
 
     def _print_menu(self):
+        print("\nMain menu\n")
         print(
-            "\nMain menu\n"
-            " 1  Submit claims from file\n"
-            " 2  Generate random claims\n"
-            " 3  View AR by payer\n"
-            " 4  View AR by patient\n"
-            " 5  View patient claims\n"
-            " 6  Pay a claim\n"
-            " 7  Launch / stop dashboard\n"
-            " 0  Quit\n"
+            f" 1  {'Stop loading claims' if self.load_thread and self.load_thread.is_alive() else 'Load claims from file'}"
         )
+        print(
+            f" 2  {'Stop generating claims' if self.generate_thread and self.generate_thread.is_alive() else 'Generate random claims'}"
+        )
+        print(" 3  View AR by payer")
+        print(" 4  View AR by patient")
+        print(" 5  View patient claims")
+        print(" 6  Pay a claim")
+        print(" 7  Launch Dashboard")
+        print(" 0  Quit")
 
     def start(self):
         self._banner()
@@ -388,9 +414,15 @@ class CLI:
                 self._print_menu()
                 choice = _input("Select an option: ").strip()
                 if choice == "1":
-                    self.submit_from_file()
+                    if self.load_thread and self.load_thread.is_alive():
+                        self.stop_loading_claims()
+                    else:
+                        self.submit_from_file()
                 elif choice == "2":
-                    self.generate_claims()
+                    if self.generate_thread and self.generate_thread.is_alive():
+                        self.stop_generating_claims()
+                    else:
+                        self.generate_claims()
                 elif choice == "3":
                     self.show_ar_by_payer()
                 elif choice == "4":
@@ -459,15 +491,24 @@ class CLI:
         num = int(num_s)
         rate_s = _input("Seconds between claims [0.5]: ").strip() or "0.5"
         rate = float(rate_s)
+
         self._ensure_submit_thread()
-        seq = 0
-        while num < 0 or seq < num:
-            self.submit_q.put(_rand_claim(seq))
-            seq += 1
-            time.sleep(rate)
-            if num >= 0 and seq >= num:
-                break
-        print(f"✔ queued {seq} random claims")
+        self.generate_stop = threading.Event()
+        self.generate_thread = threading.Thread(
+            target=_generate_claims_worker,
+            kwargs=dict(
+                q=self.submit_q,
+                rate=rate,
+                num_claims=num,
+                stats=self.submit_stats,
+                stop=self.generate_stop,
+            ),
+            daemon=True,
+        )
+        self.submit_stats.active = True
+        self.generate_thread.start()
+        print("✔ started generating claims in background")
+        self.toggle_dashboard()
 
     # ---------- queries ---------- #
 
@@ -595,17 +636,29 @@ class CLI:
     def dashboard_is_active(self):
         return hasattr(self, "dash_thread") and self.dash_thread.is_alive()
 
+    def stop_loading_claims(self):
+        """Stop loading claims from the current file."""
+        self.load_stop.set()
+        if self.load_thread and self.load_thread.is_alive():
+            self.load_thread.join(timeout=1)
+        print("✔ stopped loading claims")
+
+    def stop_generating_claims(self):
+        """Stop generating random claims."""
+        self.generate_stop.set()
+        if self.generate_thread and self.generate_thread.is_alive():
+            self.generate_thread.join(timeout=1)
+        print("✔ stopped generating claims")
+
     # ---------- shutdown ---------- #
 
     def shutdown(self):
         self.submit_stop.set()
-        if hasattr(self, "load_stop"):
-            self.load_stop.set()
+        self.stop_loading_claims()
+        self.stop_generating_claims()
         if self.submit_thread and self.submit_thread.is_alive():
             self.submit_thread.join(timeout=1)
-        if hasattr(self, "load_thread") and self.load_thread.is_alive():
-            self.load_thread.join(timeout=1)
-        if hasattr(self, "dash_thread") and self.dash_thread.is_alive():
+        if self.dash_thread and self.dash_thread.is_alive():
             self.dash_stop.set()
             self.dash_thread.join(timeout=1)
         self.client.channel.close()
