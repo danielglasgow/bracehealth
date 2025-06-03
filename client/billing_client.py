@@ -38,10 +38,10 @@ class BillingClient:
             req = bs_pb2.GetPayerAccountsReceivableRequest()
             for start, end in buckets:
                 b = req.bucket.add()
-            if start is not None:
-                b.start_seconds_ago = start
-            if end is not None:
-                b.end_seconds_ago = end
+                if start is not None:
+                    b.start_seconds_ago = start
+                if end is not None:
+                    b.end_seconds_ago = end
             if payer_ids:
                 req.payer_filter.extend(payer_ids)
             return self.stub.getPayerAccountsReceivable(req, timeout=3)

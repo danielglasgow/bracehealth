@@ -36,6 +36,7 @@ def _format_table(headers: list[str], rows: list[list[str]]) -> str:
     rule = "|-" + "-|-".join("-" * w for w in col_widths) + "-|"
     lines = [fmt_row(headers), rule]
     lines += [fmt_row(r) for r in rows]
+    lines.append(rule)
     return "\n".join(lines)
 
 
@@ -128,7 +129,7 @@ def render_dashboard(
     )
     print(f"Last udpated at {last_updated_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    print("1️⃣  AR aging by payer")
+    print("AR aging by payer\n")
     print(_render_aging_table(ar_resp))
-    print("\n2️⃣  Patient-responsibility summary")
-    print(_render_patient_table(pt_resp))
+    print("\nPatient-responsibility summary\n")
+    # print(_render_patient_table(pt_resp))

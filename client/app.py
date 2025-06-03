@@ -303,7 +303,9 @@ class App:
                     self.dashboard_state.last_aging_ar_response,
                     self.dashboard_state.last_patients_ar_response,
                 )
+                print("Ctrl+C to return to main menu")
             time.sleep(0.1)  # Repaint every 100ms
+        self.refresh_dashboard_task.request_stop()
 
 
 def main():
