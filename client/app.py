@@ -15,6 +15,14 @@ from generated import billing_service_pb2, payer_claim_pb2
 import threading
 from typing import Any, Callable, Literal, Optional, TextIO, Union
 
+import os
+
+CLS = "cls" if os.name == "nt" else "clear"
+
+
+def _clear():
+    os.system(CLS)
+
 
 class BackgroundTask:
     def __init__(self, work_fn: Callable):
@@ -84,6 +92,7 @@ class App:
         self.read_claims_from_file_task = BackgroundTask(self._read_claims_from_file)
         self.generate_random_claims_task = BackgroundTask(self._generate_random_claims)
         self.refresh_dashboard_task = BackgroundTask(self._refresh_dashboard)
+        self.file_path: Optional[Path] = None
 
     def on_signal(self, signum, frame):
         if self.active_ui == "main_menu":
@@ -94,6 +103,28 @@ class App:
             self.active_ui = "main_menu"
 
     def _print_menu(self):
+        _clear()
+        print(
+            "BraceHealth Billing CLI\n"
+            "────────────────────────\n"
+            f"Server: {self.client.target}\n"
+        )
+        print(
+            "Claim submission: ",
+            "Active" if self.submit_queue.qsize() > 0 else "Inactive",
+        )
+        print(
+            "Read claims from file: ",
+            (
+                f"Active ({self.file_path})"
+                if self.read_claims_from_file_task.is_running()
+                else "Inactive"
+            ),
+        )
+        print(
+            "Generate random claims: ",
+            "Active" if self.generate_random_claims_task.is_running() else "Inactive",
+        )
         print("\nMain menu\n")
         print(" 1  Submit claims from file")
         print(" 2  Stop submitting claims from file")
@@ -102,6 +133,7 @@ class App:
         print(" 5  View claim submissions")
         print(" 6  Launch Dashboard")
         print(" 0  Quit")
+        print()
 
     def start(self):
         self.submit_task.start()  # For now always keep submit task running
@@ -196,17 +228,19 @@ class App:
             if input().strip().lower() == "y":
                 self.stop_submit_from_file()
             return
-        path = input("Path to JSON-lines file: ").strip()
-        file_path = Path(path)
+        path = input("Path (absolute or relative) to JSON-lines file: ").strip()
+        file_path = Path(path).resolve()
         if not file_path.exists():
             print("✖ file not found")
             return
         rate_s = input("Seconds between claims: ").strip() or "1"
         file_handle = open(file_path)
         self.read_claims_from_file_task.set_work_rate(float(rate_s))
+        self.file_path = file_path
 
         def on_stop():
             file_handle.close()
+            self.file_path = None
 
         self.read_claims_from_file_task.start(on_stop, [file_handle])
         print("✔ started loading claims in background")

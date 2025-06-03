@@ -15,6 +15,7 @@ SERVER_ADDR = "localhost:9090"
 
 class BillingClient:
     def __init__(self, target: str = SERVER_ADDR):
+        self.target = target
         self.channel = grpc.insecure_channel(target)
         self.stub = bs_pb2_grpc.BillingServiceStub(self.channel)
 
