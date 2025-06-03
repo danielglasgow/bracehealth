@@ -22,7 +22,6 @@ import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.math.BigDecimal;
-import java.util.List;
 
 class BillingServiceRpcTest {
 

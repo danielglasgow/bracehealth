@@ -21,11 +21,28 @@ import os
 
 CLS = "cls" if os.name == "nt" else "clear"
 
-DEFAULT_BUCKETS: list[tuple[str, Optional[int], Optional[int]]] = [
-    (60, 0),
-    (120, 60),
-    (180, 120),
-    (None, 180),
+# start seconds ago, end seconds ago
+SLOW_BUCKETS: list[tuple[str, int, int]] = [
+    ("0-1 min", 60, 0),
+    ("1-2 min", 120, 60),
+    ("2-3 min", 180, 120),
+    ("3+ min", 0, 180),
+]
+
+# start seconds ago, end seconds ago
+FAST_BUCKETS: list[tuple[str, int, int]] = [
+    ("0-10s", 10, 0),
+    ("10-20s", 20, 10),
+    ("20-30s", 30, 20),
+    ("30+s", 0, 30),
+]
+
+# start seconds ago, end seconds ago
+LIGHTNING_BUCKETS: list[tuple[str, int, int]] = [
+    ("0-1s", 1, 0),
+    ("1-2s", 2, 1),
+    ("2-3s", 3, 2),
+    ("3+s", 0, 3),
 ]
 
 
@@ -240,7 +257,9 @@ class App:
         self.dashboard_state = DashboardState(
             last_updated_time=datetime.datetime.now(),
             last_patients_ar_response=self.client.ar_by_patient(),
-            last_aging_ar_response=self.client.ar_by_payer(DEFAULT_BUCKETS),
+            last_aging_ar_response=self.client.ar_by_payer(
+                [(s, e) for _, s, e in self.dashboard_buckets]
+            ),
         )
 
     def submit_from_file(self):
@@ -289,9 +308,22 @@ class App:
     def show_dashboard(self):
         rate_s = input("Seconds between dashboard refreshes: ").strip() or "1"
         rate = float(rate_s)
+        self.active_ui = "dashboard"
+        print("Dashboard AR bucket modes")
+        print(" 1  Slow (0-1min, 1-2min, 2-3min, 3min+)")
+        print(" 2  Fast (0-10s, 10-20s, 20-30s, 30s+)")
+        print(" 3  Lightning (0-1s, 1-2s, 2-3s, 3s+)")
+        choice = input("Select a bucket mode: ").strip()
+        if choice == "1":
+            self.dashboard_buckets = SLOW_BUCKETS
+        elif choice == "2":
+            self.dashboard_buckets = FAST_BUCKETS
+        elif choice == "3":
+            self.dashboard_buckets = LIGHTNING_BUCKETS
+        else:
+            self.dashboard_buckets = SLOW_BUCKETS
         self.refresh_dashboard_task.set_work_rate(rate)
         self.refresh_dashboard_task.start()
-        self.active_ui = "dashboard"
         print("Waiting for dashboard data", end="", flush=True)
         while self.active_ui == "dashboard":
             if self.dashboard_state is None:
@@ -302,6 +334,8 @@ class App:
                     self.dashboard_state.last_updated_time,
                     self.dashboard_state.last_aging_ar_response,
                     self.dashboard_state.last_patients_ar_response,
+                    self.dashboard_buckets,
+                    self.submit_claim_responses,
                 )
                 print("Ctrl+C to return to main menu")
             time.sleep(0.1)  # Repaint every 100ms

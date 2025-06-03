@@ -1,17 +1,9 @@
 import os
 from datetime import datetime
+import grpc
 
 from generated import billing_service_pb2, common_pb2
 
-
-# Four aging buckets expressed in *seconds ago* relative to "now"
-# (start is the older edge, end the newer edge; end==0 ⇒ present moment)
-AGING_BUCKETS: list[tuple[str, int | None, int | None]] = [
-    ("0-1 min", 60, 0),
-    ("1-2 min", 120, 60),
-    ("2-3 min", 180, 120),
-    ("3+ min", None, 180),  # start unspecified ⇒ "back forever"
-]
 
 CURRENCY_FMT = "${:,.2f}"  # show dollar amounts with cents and commas
 
@@ -40,30 +32,20 @@ def _format_table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def _bucket_key(start: int, end: int) -> tuple[int, int]:
-    """Helper for hashing proto bucket edges."""
-    return start, end
-
-
 def _render_aging_table(
     resp: billing_service_pb2.GetPayerAccountsReceivableResponse,
+    buckets: list[tuple[str, int, int]],
 ) -> str:
     # Map (start,end) → label for quick lookup
-    bucket_lookup = {
-        (start or 0, end or -1): label  # None ➜ 0/-1 just for keying
-        for label, start, end in AGING_BUCKETS
-    }
-    header = ["Payer"] + [b[0] for b in AGING_BUCKETS] + ["TOTAL"]
+    bucket_lookup = {(start, end): label for label, start, end in buckets}
+    header = ["Payer"] + [b[0] for b in buckets] + ["TOTAL"]
     rows: list[list[str]] = []
 
     for row in resp.row:
-        amounts_by_label: dict[str, float] = {b[0]: 0.0 for b in AGING_BUCKETS}
+        amounts_by_label: dict[str, float] = {b[0]: 0.0 for b in buckets}
         total = 0.0
         for bv in row.bucket_value:
-            key = _bucket_key(
-                bv.bucket.start_seconds_ago or 0,
-                bv.bucket.end_seconds_ago or -1,
-            )
+            key = (bv.bucket.start_seconds_ago, bv.bucket.end_seconds_ago)
             label = bucket_lookup.get(key)
             if label:
                 amount = bv.amount.whole_amount + bv.amount.decimal_amount / 100
@@ -72,7 +54,7 @@ def _render_aging_table(
 
         rows.append(
             [row.payer_id]
-            + [CURRENCY_FMT.format(amounts_by_label[b[0]]) for b in AGING_BUCKETS]
+            + [CURRENCY_FMT.format(amounts_by_label[b[0]]) for b in buckets]
             + [CURRENCY_FMT.format(total)]
         )
 
@@ -97,6 +79,9 @@ def _render_patient_table(
     ]
     rows = []
     for row in resp.row:
+        claim_ids = [id for id in row.claim_id]
+        if len(claim_ids) > 3:
+            claim_ids = claim_ids[:3] + ["..."]
         balance = row.balance
         outstanding_copay = _currency_value_to_float(balance.outstanding_copay)
         outstanding_coinsurance = _currency_value_to_float(
@@ -108,7 +93,7 @@ def _render_patient_table(
         rows.append(
             [
                 row.patient.first_name + " " + row.patient.last_name,
-                ", ".join(row.claim_id),  # Join multiple claim IDs with commas
+                ", ".join(claim_ids),
                 CURRENCY_FMT.format(outstanding_copay),
                 CURRENCY_FMT.format(outstanding_coinsurance),
                 CURRENCY_FMT.format(outstanding_deductible),
@@ -117,19 +102,49 @@ def _render_patient_table(
     return _format_table(header, rows)
 
 
+def _get_successful_claims(
+    claim_responses: dict[str, billing_service_pb2.SubmitClaimResponse | grpc.RpcError],
+) -> list[str]:
+    return [
+        id
+        for id, resp in claim_responses.items()
+        if isinstance(resp, billing_service_pb2.SubmitClaimResponse)
+        and resp.result
+        == billing_service_pb2.SubmitClaimResponse.SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS
+    ]
+
+
+def _get_failed_claims(
+    claim_responses: dict[str, billing_service_pb2.SubmitClaimResponse | grpc.RpcError],
+) -> list[str]:
+    return [
+        id
+        for id, resp in claim_responses.items()
+        if isinstance(resp, grpc.RpcError)
+        or resp.result
+        != billing_service_pb2.SubmitClaimResponse.SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS
+    ]
+
+
 def render_dashboard(
     interval: float,
     last_updated_time: datetime,
     ar_resp: billing_service_pb2.GetPayerAccountsReceivableResponse,
     pt_resp: billing_service_pb2.GetPatientAccountsReceivableResponse,
+    buckets: list[tuple[str, int, int]],
+    claim_responses: dict[str, billing_service_pb2.SubmitClaimResponse | grpc.RpcError],
 ) -> None:
     os.system("clear" if os.name == "posix" else "cls")
     print(
         f"== Brace Health - Real-time (updated every {interval:.1f}s) Billing Monitor =="
     )
-    print(f"Last udpated at {last_updated_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    print(f"Last udpated at {last_updated_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(
+        f"Successfully submitted claim count: {len(_get_successful_claims(claim_responses))}"
+    )
+    print(f"Failed claim count: {len(_get_failed_claims(claim_responses))}")
 
-    print("AR aging by payer\n")
-    print(_render_aging_table(ar_resp))
+    print("\nAR aging by payer\n")
+    print(_render_aging_table(ar_resp, buckets))
     print("\nPatient-responsibility summary\n")
     # print(_render_patient_table(pt_resp))
