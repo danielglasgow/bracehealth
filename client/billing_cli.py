@@ -23,6 +23,7 @@ Run it, follow the on-screen prompts, press ⏎ to accept defaults, or
 type "back" at almost any prompt to return to the main menu.
 """
 
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import grpc
 
@@ -279,9 +280,12 @@ def _load_claims_worker(
 
 
 def _dashboard_worker(
-    client: BillingClient, stats: SimpleNamespace, stop: threading.Event
+    client: BillingClient,
+    stats: SimpleNamespace,
+    stop: threading.Event,
+    refresh_rate: float = DASH_INTERVAL,
 ):
-    """Refreshes AR + patient balances every DASH_INTERVAL seconds."""
+    """Refreshes AR + patient balances every refresh_rate seconds."""
     buckets = DEFAULT_BUCKETS  # reuse defaults
     while not stop.is_set():
         try:
@@ -289,12 +293,14 @@ def _dashboard_worker(
             ar_patient = client.ar_by_patient()
         except grpc.RpcError as e:
             print("gRPC error in dashboard:", e)
-            time.sleep(DASH_INTERVAL)
+            time.sleep(refresh_rate)
             continue
 
         _clear()
-        print(f"BraceHealth Billing Dashboard – {datetime.now():%Y-%m-%d %H:%M:%S}")
+        print(f"BraceHealth Billing Dashboard")
         print("─" * 72)
+        print(f"Refresh rate: {refresh_rate:.1f}s (press 'r' to change)")
+        print(f"Last updated: {datetime.now():%Y-%m-%d %H:%M:%S}")
         # Claim submission status
         if stats.active:
             print(
@@ -333,9 +339,9 @@ def _dashboard_worker(
             )
             name = f"{r.patient.first_name} {r.patient.last_name}"
             print(f"  {name:<25} {CURRENCY_FMT.format(total):>10}")
-        print("\n(Press 0 to stop dashboard, any key ↵ will redraw sooner)")
-        # Sleep in small increments to allow early redraw
-        for _ in range(int(DASH_INTERVAL * 10)):
+        print("\n(Enter 0 to stop dashboard, 'r' to change refresh rate)")
+        # Sleep in small increments to allow interupt / rejoining this thread
+        for _ in range(int(refresh_rate / 0.1)):
             if stop.is_set():
                 break
             time.sleep(0.1)
@@ -351,48 +357,55 @@ class CLI:
         self.submit_stop = threading.Event()
         self.submit_stats = SimpleNamespace(active=False, count=0, last_claim_id="-")
         self.submit_thread: Optional[threading.Thread] = None
+        self.dash_refresh_rate = DASH_INTERVAL  # Default refresh rate
 
     # ---------- menu ---------- #
+
+    def _print_menu(self):
+        print(
+            "\nMain menu\n"
+            " 1  Submit claims from file\n"
+            " 2  Generate random claims\n"
+            " 3  View AR by payer\n"
+            " 4  View AR by patient\n"
+            " 5  View patient claims\n"
+            " 6  Pay a claim\n"
+            " 7  Launch / stop dashboard\n"
+            " 0  Quit\n"
+        )
 
     def start(self):
         self._banner()
         while True:
-            print(
-                "\nMain menu\n"
-                " 1  Submit claims from file\n"
-                " 2  Generate random claims\n"
-                " 3  View AR by payer\n"
-                " 4  View AR by patient\n"
-                " 5  View patient claims\n"
-                " 6  Pay a claim\n"
-                " 7  Launch / stop dashboard\n"
-                " 0  Quit\n"
-            )
-            choice = _input("Select an option: ").strip()
             if self.dashboard_is_active():
+                choice = _input("").strip()
                 if choice == "0":
                     self.toggle_dashboard()
-                    continue
-                self.redraw_dashboard()
-            if choice == "1":
-                self.submit_from_file()
-            elif choice == "2":
-                self.generate_claims()
-            elif choice == "3":
-                self.show_ar_by_payer()
-            elif choice == "4":
-                self.show_ar_by_patient()
-            elif choice == "5":
-                self.show_patient_claims()
-            elif choice == "6":
-                self.pay_claim()
-            elif choice == "7":
-                self.toggle_dashboard()
-            elif choice == "0" or choice.lower() == "quit":
-                self.shutdown()
-                break
+                elif choice == "r":
+                    self.toggle_dashboard()
+                    self.configure_dashboard_refresh_rate()
             else:
-                print("✖ invalid choice")
+                self._print_menu()
+                choice = _input("Select an option: ").strip()
+                if choice == "1":
+                    self.submit_from_file()
+                elif choice == "2":
+                    self.generate_claims()
+                elif choice == "3":
+                    self.show_ar_by_payer()
+                elif choice == "4":
+                    self.show_ar_by_patient()
+                elif choice == "5":
+                    self.show_patient_claims()
+                elif choice == "6":
+                    self.pay_claim()
+                elif choice == "7":
+                    self.toggle_dashboard()
+                elif choice == "0" or choice.lower() == "quit":
+                    self.shutdown()
+                    break
+                else:
+                    print("✖ invalid choice")
 
     # ---------- claim submission ---------- #
 
@@ -545,6 +558,22 @@ class CLI:
 
     # ---------- dashboard ---------- #
 
+    def configure_dashboard_refresh_rate(self):
+        """Configure the dashboard refresh rate."""
+        rate_s = _input(
+            f"New refresh rate in seconds [{self.dash_refresh_rate}]: "
+        ).strip()
+        if rate_s:
+            try:
+                new_rate = float(rate_s)
+                if new_rate < 1:
+                    print("⚠️  Rate too low, minimum is 1 second")
+                    return
+                self.dash_refresh_rate = new_rate
+                self.toggle_dashboard()
+            except ValueError:
+                print("⚠️  Invalid number")
+
     def toggle_dashboard(self):
         if hasattr(self, "dash_thread") and self.dash_thread.is_alive():
             self.dash_stop.set()
@@ -554,17 +583,14 @@ class CLI:
             self.dash_thread = threading.Thread(
                 target=_dashboard_worker,
                 kwargs=dict(
-                    client=self.client, stats=self.submit_stats, stop=self.dash_stop
+                    client=self.client,
+                    stats=self.submit_stats,
+                    stop=self.dash_stop,
+                    refresh_rate=self.dash_refresh_rate,
                 ),
                 daemon=True,
             )
             self.dash_thread.start()
-
-    def redraw_dashboard(self):
-        if not self.dashboard_is_active():
-            return
-        self.toggle_dashboard()
-        self.toggle_dashboard()
 
     def dashboard_is_active(self):
         return hasattr(self, "dash_thread") and self.dash_thread.is_alive()
