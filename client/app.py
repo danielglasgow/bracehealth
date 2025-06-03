@@ -6,7 +6,7 @@ import queue
 import time
 import grpc
 from billing_client import BillingClient
-from claim_util import json_to_claim
+from claim_util import generate_random_claim, json_to_claim
 import json
 import sys
 
@@ -24,7 +24,6 @@ class BackgroundTask:
         self.thread: Optional[threading.Thread] = None
 
     def start(self, on_stop: Callable[[], None] | None = None, fn_args: list[Any] = []):
-        print(f"Starting 1 {self.work_fn.__name__}")
         if self.thread and self.thread.is_alive():
             return
         self.stop.clear()
@@ -33,7 +32,6 @@ class BackgroundTask:
         self.thread.start()
 
     def run(self, on_stop: Callable[[], None] | None = None, fn_args: list[Any] = []):
-        print(f"Starting 2 {self.work_fn.__name__}")
         try:
             while not self.stop.is_set():
                 self.work_fn(*fn_args)
@@ -89,7 +87,9 @@ class App:
 
     def on_signal(self, signum, frame):
         if self.active_ui == "main_menu":
+            print()
             self.shutdown()
+            sys.exit(0)
         else:
             self.active_ui = "main_menu"
 
@@ -177,21 +177,15 @@ class App:
         return False
 
     def _read_claims_from_file(self, file_handle: TextIO):
-        try:
-            line = file_handle.readline()
-            if not line.strip():
-                return
-            try:
-                claim = json_to_claim(json.loads(line))
-                self.submit_message_queue.put(f"Read claim from file: {claim.claim_id}")
-                self.submit_queue.put(claim)
-            except Exception as e:
-                self.submit_message_queue.put(f"⚠️  skipping malformed line: {e}")
-        except Exception as e:
-            self.submit_message_queue.put(f"❌ Error reading file: {e}")
+        line = file_handle.readline()
+        claim = json_to_claim(json.loads(line))
+        self.submit_message_queue.put(f"Read claim from file: {claim.claim_id}")
+        self.submit_queue.put(claim)
 
     def _generate_random_claims(self):
-        pass
+        claim = generate_random_claim()
+        self.submit_message_queue.put(f"Generated claim: {claim['claim_id']}")
+        self.submit_queue.put(json_to_claim(claim))
 
     def _refresh_dashboard(self):
         pass
@@ -225,7 +219,10 @@ class App:
             print("No claims are being loaded from file")
 
     def generate_claims(self):
-        pass
+        rate_s = input("Seconds between claims: ").strip() or "1"
+        rate = float(rate_s)
+        self.generate_random_claims_task.set_work_rate(rate)
+        self.generate_random_claims_task.start()
 
     def stop_generate_claims(self):
         if self.generate_random_claims_task.is_running():
