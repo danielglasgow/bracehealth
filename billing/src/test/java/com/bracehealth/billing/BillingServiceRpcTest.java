@@ -6,6 +6,8 @@ import com.bracehealth.shared.*;
 import com.bracehealth.shared.GetPatientClaimsResponse.ClaimStatus;
 import com.bracehealth.shared.GetPatientClaimsResponse.GetPatientClaimError;
 import com.bracehealth.shared.GetPatientClaimsResponse.PatientClaimRow;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableBucketValue;
+import com.bracehealth.shared.GetPayerAccountsReceivableResponse.AccountsReceivableRow;
 import com.bracehealth.shared.SubmitClaimRequest;
 import com.bracehealth.shared.SubmitClaimResponse;
 import com.bracehealth.shared.NotifyRemittanceRequest;
@@ -20,6 +22,7 @@ import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.math.BigDecimal;
+import java.util.List;
 
 class BillingServiceRpcTest {
 
@@ -168,6 +171,97 @@ class BillingServiceRpcTest {
                 row.getBalance().getOutstandingDeductible());
     }
 
+    @Test
+    void getPayerAccountsReceivable_withTimeBuckets_returnsCorrectAmounts() throws Exception {
+        BillingService billingService = createBillingService();
+
+        // Create test patient and claims
+        Patient patient = createTestPatient("John", "Doe");
+        PayerClaim claim1 = createTestClaim("C1", PayerId.MEDICARE, 20.0, patient);
+        PayerClaim claim2 = createTestClaim("C2", PayerId.MEDICARE, 30.0, patient);
+        PayerClaim claim3 = createTestClaim("C3", PayerId.MEDICARE, 40.0, patient);
+        PayerClaim claim4 = createTestClaim("C4", PayerId.MEDICARE, 10.0, patient);
+
+        long oneSecondAgo = System.currentTimeMillis() / 1000 - 1;
+        long fifteenSecondsAgo = System.currentTimeMillis() / 1000 - 15;
+        long twentyFiveSecondsAgo = System.currentTimeMillis() / 1000 - 25;
+        long fourtySecondsAgo = System.currentTimeMillis() / 1000 - 40;
+
+        SubmitClaimRequest submitRequest1 = SubmitClaimRequest.newBuilder().setClaim(claim1)
+                .setSendTimeSeconds(oneSecondAgo).build();
+        SubmitClaimResponse submitResponse1 =
+                executeSubmitClaimRequest(billingService, submitRequest1);
+        assertEquals(SubmitClaimResponse.SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS,
+                submitResponse1.getResult());
+
+        SubmitClaimRequest submitRequest2 = SubmitClaimRequest.newBuilder().setClaim(claim2)
+                .setSendTimeSeconds(fifteenSecondsAgo).build();
+        SubmitClaimResponse submitResponse2 =
+                executeSubmitClaimRequest(billingService, submitRequest2);
+        assertEquals(SubmitClaimResponse.SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS,
+                submitResponse2.getResult());
+
+        SubmitClaimRequest submitRequest3 = SubmitClaimRequest.newBuilder().setClaim(claim3)
+                .setSendTimeSeconds(twentyFiveSecondsAgo).build();
+        SubmitClaimResponse submitResponse3 =
+                executeSubmitClaimRequest(billingService, submitRequest3);
+        assertEquals(SubmitClaimResponse.SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS,
+                submitResponse3.getResult());
+
+        SubmitClaimRequest submitRequest4 = SubmitClaimRequest.newBuilder().setClaim(claim4)
+                .setSendTimeSeconds(fourtySecondsAgo).build();
+        SubmitClaimResponse submitResponse4 =
+                executeSubmitClaimRequest(billingService, submitRequest4);
+        assertEquals(SubmitClaimResponse.SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS,
+                submitResponse4.getResult());
+
+        // Get accounts receivable with time buckets
+        GetPayerAccountsReceivableRequest request = GetPayerAccountsReceivableRequest.newBuilder()
+                .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(10)
+                        .setEndSecondsAgo(0).build())
+                .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(20)
+                        .setEndSecondsAgo(10).build())
+                .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(30)
+                        .setEndSecondsAgo(20).build())
+                .addBucket(AccountsReceivableBucket.newBuilder().setStartSecondsAgo(0)
+                        .setEndSecondsAgo(30).build())
+                .addPayerFilter(PayerId.MEDICARE).build();
+
+        GetPayerAccountsReceivableResponse response =
+                executeGetPayerAccountsReceivableRequest(billingService, request);
+
+        // Verify response
+        assertEquals(1, response.getRowCount());
+        GetPayerAccountsReceivableResponse.AccountsReceivableRow row = response.getRow(0);
+        assertEquals(PayerId.MEDICARE.toString(), row.getPayerId());
+        assertEquals(4, row.getBucketValueCount());
+
+        var bucket0to10 = getBucketValue(row, 10, 0);
+        assertEquals(20, bucket0to10.getAmount().getWholeAmount());
+        assertEquals(0, bucket0to10.getAmount().getDecimalAmount());
+
+        var bucket10to20 = getBucketValue(row, 20, 10);
+        assertEquals(30, bucket10to20.getAmount().getWholeAmount());
+        assertEquals(0, bucket10to20.getAmount().getDecimalAmount());
+
+        var bucket20to30 = getBucketValue(row, 30, 20);
+        assertEquals(40, bucket20to30.getAmount().getWholeAmount());
+        assertEquals(0, bucket20to30.getAmount().getDecimalAmount());
+
+        var bucket30plus = getBucketValue(row, 0, 30);
+        assertEquals(10, bucket30plus.getAmount().getWholeAmount());
+        assertEquals(0, bucket30plus.getAmount().getDecimalAmount());
+    }
+
+    private AccountsReceivableBucketValue getBucketValue(AccountsReceivableRow row,
+            int startSecondsAgo, int endSecondsAgo) {
+        return row.getBucketValueList().stream()
+                .filter(bv -> bv.getBucket().getStartSecondsAgo() == startSecondsAgo
+                        && bv.getBucket().getEndSecondsAgo() == endSecondsAgo)
+                .findFirst().orElseThrow(() -> new AssertionError("No bucket found for range "
+                        + startSecondsAgo + "-" + endSecondsAgo + " seconds ago"));
+    }
+
     private BillingService createBillingService() {
         ClaimStore claimStore = new ClaimStore(tempDir.resolve("claims.json"));
         PatientStore patientStore = new PatientStore();
@@ -283,6 +377,35 @@ class BillingServiceRpcTest {
                 new StreamObserver<SubmitPatientPaymentResponse>() {
                     @Override
                     public void onNext(SubmitPatientPaymentResponse response) {
+                        responseHolder[0] = response;
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                        throw new RuntimeException(t);
+                    }
+
+                    @Override
+                    public void onCompleted() {
+                        latch.countDown();
+                    }
+                });
+
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Request timed out");
+        return responseHolder[0];
+    }
+
+    private GetPayerAccountsReceivableResponse executeGetPayerAccountsReceivableRequest(
+            BillingService billingService, GetPayerAccountsReceivableRequest request)
+            throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        GetPayerAccountsReceivableResponse[] responseHolder =
+                new GetPayerAccountsReceivableResponse[1];
+
+        billingService.getPayerAccountsReceivable(request,
+                new StreamObserver<GetPayerAccountsReceivableResponse>() {
+                    @Override
+                    public void onNext(GetPayerAccountsReceivableResponse response) {
                         responseHolder[0] = response;
                     }
 

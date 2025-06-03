@@ -64,12 +64,13 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
     @Override
     public void submitClaim(SubmitClaimRequest request,
             StreamObserver<SubmitClaimResponse> observer) {
-        SubmitClaimResponse response = submitClaimInternal(request.getClaim());
+        SubmitClaimResponse response =
+                submitClaimInternal(request.getClaim(), request.getSendTimeSeconds());
         observer.onNext(response);
         observer.onCompleted();
     }
 
-    private SubmitClaimResponse submitClaimInternal(PayerClaim claim) {
+    private SubmitClaimResponse submitClaimInternal(PayerClaim claim, long sendTimeSeconds) {
         logger.info("Received claim submission for claim ID: {}", claim.getClaimId());
         if (claimStore.containsClaim(claim.getClaimId())) {
             logger.error("Claim with ID {} already exists", claim.getClaimId());
@@ -100,7 +101,9 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
             return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_FAILURE);
 
         }
-        claimStore.addClaim(claim, Instant.now());
+        Instant submittedAt =
+                sendTimeSeconds == 0 ? Instant.now() : Instant.ofEpochSecond(sendTimeSeconds);
+        claimStore.addClaim(claim, submittedAt);
         return createResponse(SubmitClaimResult.SUBMIT_CLAIM_RESULT_SUCCESS);
     }
 
@@ -109,7 +112,9 @@ public class BillingService extends BillingServiceGrpc.BillingServiceImplBase {
             StreamObserver<NotifyRemittanceResponse> observer) {
         Remittance remittance = request.getRemittance();
         logger.info("Received remittance for claim ID: {}", remittance.getClaimId());
-        claimStore.addResponse(remittance.getClaimId(), remittance, Instant.now());
+        Instant responseReceivedAt = request.getSendTimeSeconds() == 0 ? Instant.now()
+                : Instant.ofEpochSecond(request.getSendTimeSeconds());
+        claimStore.addResponse(remittance.getClaimId(), remittance, responseReceivedAt);
         observer.onNext(NotifyRemittanceResponse.newBuilder()
                 .setResult(NotifyRemittanceResult.NOTIFY_REMITTANCE_RESULT_SUCCESS).build());
         observer.onCompleted();
