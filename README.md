@@ -54,6 +54,7 @@ mvn spring-boot:run
 
 ```
 cd client
+source .venv/bin/activate
 ```
 
 ```
@@ -63,7 +64,7 @@ python scripts/generate_protos.py
 ```
 
 ```
-python main,py
+python main.py
 ```
 
 ## Other
