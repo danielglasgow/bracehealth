@@ -3,7 +3,8 @@ from datetime import datetime
 import grpc
 from pydantic import BaseModel
 
-from src.generated import billing_service_pb2, common_pb2
+from src.generated import billing_service_pb2
+from src.common import currency_value_to_float
 
 
 CURRENCY_FMT = "${:,.2f}"  # show dollar amounts with cents and commas
@@ -46,7 +47,7 @@ def _pad(value: str, width: int) -> str:
     return value.ljust(width)
 
 
-def _format_table(headers: list[str], rows: list[list[str]]) -> str:
+def format_table(headers: list[str], rows: list[list[str]]) -> str:
     col_widths = [len(h) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
@@ -92,11 +93,7 @@ def _render_aging_table(
             + [CURRENCY_FMT.format(total)]
         )
 
-    return _format_table(header, rows)
-
-
-def _currency_value_to_float(cv: common_pb2.CurrencyValue) -> float:
-    return cv.whole_amount + cv.decimal_amount / 100
+    return format_table(header, rows)
 
 
 # There is a bug here or in the API (I think the API), where we're not properly aggregating by patient name
@@ -119,13 +116,11 @@ def _render_patient_table(
         if len(claim_ids) > 3:
             claim_ids = claim_ids[:3] + ["..."]
         balance = row.balance
-        outstanding_copay = _currency_value_to_float(balance.outstanding_copay)
-        outstanding_coinsurance = _currency_value_to_float(
+        outstanding_copay = currency_value_to_float(balance.outstanding_copay)
+        outstanding_coinsurance = currency_value_to_float(
             balance.outstanding_coinsurance
         )
-        outstanding_deductible = _currency_value_to_float(
-            balance.outstanding_deductible
-        )
+        outstanding_deductible = currency_value_to_float(balance.outstanding_deductible)
         rows.append(
             [
                 row.patient.first_name + " " + row.patient.last_name,
@@ -135,7 +130,7 @@ def _render_patient_table(
                 CURRENCY_FMT.format(outstanding_deductible),
             ]
         )
-    return _format_table(header, rows)
+    return format_table(header, rows)
 
 
 def _get_successful_claims(

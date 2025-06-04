@@ -1,8 +1,8 @@
-from collections import defaultdict
 import datetime
 from pathlib import Path
 import queue
 import time
+from src.payments import pay_claim, view_claims_for_patient
 import grpc
 from src.dashboard import (
     render_dashboard,
@@ -10,7 +10,6 @@ from src.dashboard import (
     SLOW_BUCKETS,
     FAST_BUCKETS,
     LIGHTNING_BUCKETS,
-    _format_table,
     CURRENCY_FMT,
 )
 from src.billing_client import BillingClient
@@ -19,19 +18,10 @@ from src.claim_util import generate_random_claim, json_to_claim
 import json
 import sys
 
-from src.generated import billing_service_pb2, payer_claim_pb2, common_pb2
+from src.generated import billing_service_pb2, payer_claim_pb2
+from src.common import clear_screen
 
-from typing import Literal, Optional, TextIO, Union
-
-import os
-
-# Map claim status enum values to readable strings
-CLAIM_STATUS_MAP = {
-    0: "UNKNOWN",
-    1: "SUBMITTED",
-    2: "REMITTENCE_RECEIVED",
-    3: "PAID",
-}
+from typing import Optional, TextIO, Union
 
 
 class App:
@@ -58,9 +48,6 @@ class App:
             sys.exit(0)
         else:
             self.active_ui = "main_menu"
-
-    def _clear_screen(self):
-        os.system("clear" if os.name == "posix" else "cls")
 
     def _print_menu(self):
         print(
@@ -107,7 +94,7 @@ class App:
         self.submit_task.start()  # For now always keep submit task running
         while True:
             self.active_ui = "main_menu"
-            self._clear_screen()
+            clear_screen()
             self._print_menu()
             choice = input("Select an option: ").strip()
             if choice == "1":
@@ -146,205 +133,26 @@ class App:
                 task.thread.join(timeout=1)
         self.client.channel.close()
 
-    def _format_claims_table(
-        self, claims: billing_service_pb2.GetPatientClaimsResponse
-    ) -> str:
-        header = ["Claim ID", "Status", "Copay", "Coinsurance", "Deductible", "Total"]
-        rows = []
-        for claim in claims.row:
-            copay = _currency_value_to_float(claim.balance.outstanding_copay)
-            coinsurance = _currency_value_to_float(
-                claim.balance.outstanding_coinsurance
-            )
-            deductible = _currency_value_to_float(claim.balance.outstanding_deductible)
-            total = copay + coinsurance + deductible
-
-            rows.append(
-                [
-                    claim.claim_id,
-                    CLAIM_STATUS_MAP.get(claim.status, "UNKNOWN"),
-                    CURRENCY_FMT.format(copay),
-                    CURRENCY_FMT.format(coinsurance),
-                    CURRENCY_FMT.format(deductible),
-                    CURRENCY_FMT.format(total),
-                ]
-            )
-        return _format_table(header, rows)
-
-    def _format_patients_table(self, rows: list[dict]) -> str:
-        header = ["#", "Patient Name", "Balance", "Claim Count"]
-        row_values = []
-        for i, row in enumerate(rows):
-            row_values.append(
-                [
-                    str(i + 1),
-                    row["patient_name"],
-                    CURRENCY_FMT.format(row["balance"]),
-                    str(row["claim_count"]),
-                ]
-            )
-        return _format_table(header, row_values)
-
     def view_claims_for_patient(self):
         self.active_ui = "view_claims_for_patient"
-        self._clear_screen()
-        self._view_claims_for_patient()
+        clear_screen()
+        view_claims_for_patient(self.client)
         print("\nPress Ctrl+C to return to main menu")
-
         while self.active_ui == "view_claims_for_patient":
             time.sleep(0.1)
         return
 
-    def _view_claims_for_patient(self) -> dict[int, str]:
-        patients: dict[str, payer_claim_pb2.Patient] = {}  # patient_id -> patient
-        patient_id_to_rows: dict[
-            str,
-            list[
-                billing_service_pb2.GetPatientClaimsResponse.PatientAccountsReceivableRow
-            ],
-        ] = defaultdict(list)
-        response = self.client.ar_by_patient()
-        for row in response.row:
-            patient_id = _patient_id(row.patient)
-            patients[patient_id] = row.patient
-            patient_id_to_rows[patient_id].append(row)
-
-        patient_id_to_balance: dict[str, float] = defaultdict(float)
-        for patient_id, rows in patient_id_to_rows.items():
-            for row in rows:
-                total_balance = sum(
-                    [
-                        _currency_value_to_float(row.balance.outstanding_copay),
-                        _currency_value_to_float(row.balance.outstanding_coinsurance),
-                        _currency_value_to_float(row.balance.outstanding_deductible),
-                    ]
-                )
-                patient_id_to_balance[patient_id] += total_balance
-        rows = []
-        row_to_patient = {}
-        for i, patient in enumerate(
-            sorted(patients.values(), key=lambda x: (x.last_name, x.first_name))
-        ):
-            patient_id = _patient_id(patient)
-            row_to_patient[i + 1] = patient
-            rows.append(
-                {
-                    "patient_name": f"{patient.first_name} {patient.last_name}",
-                    "balance": patient_id_to_balance[patient_id],
-                    "claim_count": len(patient_id_to_rows[patient_id]),
-                }
-            )
-        print(self._format_patients_table(rows))
-        return row_to_patient
-
     def pay_claim(self):
         self.active_ui = "pay_claim"
-        self._clear_screen()
-        print("Patients")
-        row_to_patient = self._view_claims_for_patient()
-        if len(row_to_patient) == 0:
-            print("No patients found")
-            print("Press Ctrl+C to return to main menu")
-            while self.active_ui == "pay_claim":
-                time.sleep(0.1)
-            return
-        choice = input("Select a patient: ").strip()
-        choice_index = 0
-        try:
-            choice_index = int(choice)
-        except ValueError:
-            choice_index = 0
-        patient = row_to_patient[choice_index]
-        if patient is None:
-            patient = row_to_patient[0]
-        patient_id = _patient_id(patient)
-        claims = self.client.patient_claims(patient_id)
-        if (
-            claims.error
-            != billing_service_pb2.GetPatientClaimsResponse.GET_PATIENT_CLAIM_ERROR_UNSPECIFIED
-        ):
-            print(f"Error: {claims.error}")
-            print("Press Ctrl+C to return to main menu")
-            while self.active_ui == "pay_claim":
-                time.sleep(0.1)
-            return
-        claims_with_outstanding_balance = [
-            claim for claim in claims.row if _check_has_outstanding_balance(claim)
-        ]
-        if len(claims_with_outstanding_balance) == 0:
-            print("No claims with outstanding balances")
-            print("Press Ctrl+C to return to main menu")
-            while self.active_ui == "pay_claim":
-                time.sleep(0.1)
-            return
-        self._clear_screen()
-        print("\nClaims for", f"{patient.first_name} {patient.last_name}")
-        print(self._format_claims_table(claims))
-        print("")
-        choice = input("Select a claim to pay (x to return to main menu): ").strip()
-        claim_ids_with_outstanding_balance = [
-            claim.claim_id for claim in claims_with_outstanding_balance
-        ]
-        while choice not in claim_ids_with_outstanding_balance and choice != "x":
-            print("Invalid claim ID")
-            choice = input("Select a claim to pay (x to return to main menu): ").strip()
-        if choice == "x":
-            return
-        claim = next(
-            claim
-            for claim in claims_with_outstanding_balance
-            if claim.claim_id == choice
-        )
-        full_balance = sum(
-            [
-                _currency_value_to_float(claim.balance.outstanding_copay),
-                _currency_value_to_float(claim.balance.outstanding_coinsurance),
-                _currency_value_to_float(claim.balance.outstanding_deductible),
-            ]
-        )
-        amount = None
-        while True:
-            print("Enter amount to pay (x to return to main menu): ")
-            amount = input().strip()
-            if amount == "x":
-                return
-            if not amount:
-                print("Pay full balance? (y/n)")
-                if input().strip().lower() == "y":
-                    amount = full_balance
-                    break
-                else:
-                    continue
-            try:
-                amount = float(amount)
-                if amount > full_balance:
-                    print("Amount is greater than full balance. Ignoring.")
-                    continue
-                break
-            except ValueError:
-                print("Invalid amount")
-        print(f"Paying {CURRENCY_FMT.format(amount)} for claim {choice}")
-        response = self.client.pay_claim(claim.claim_id, amount)
-        if isinstance(response, grpc.RpcError):
-            print("Error submitting claim")
-        else:
-            result_map = {
-                0: "UNSPECIFIED",
-                1: "ERROR",
-                2: "NO_OUTSTANDING_BALANCE",
-                3: "AMOUNT_EXCEEDS_OUTSTANDING_BALANCE",
-                4: "FULLY_PAID",
-                5: "PAYMENT_APPLIED_BALANCING_OUTSTANDING",
-            }
-            print(f"Payment result: {result_map[response.result]}")
 
-            ## Show latest patient claims
-            claims = self.client.patient_claims(patient_id)
-            print(self._format_claims_table(claims))
+        def await_main_menu(message: str):
+            if message:
+                print(message)
+            print("Press Ctrl+C to return to main menu")
+            while self.active_ui == "pay_claim":
+                time.sleep(0.1)
 
-        print("Press Ctrl+C to return to main menu")
-        while self.active_ui == "pay_claim":
-            time.sleep(0.1)
+        pay_claim(self.client, await_main_menu)
 
     def show_submit_messages(self):
         self.active_ui = "submit_claims"
@@ -478,26 +286,3 @@ class App:
                 print("Ctrl+C to return to main menu")
             time.sleep(0.1)  # Repaint every 100ms
         self.refresh_dashboard_task.request_stop()
-
-
-def _currency_value_to_float(cv: common_pb2.CurrencyValue) -> float:
-    return cv.whole_amount + cv.decimal_amount / 100
-
-
-def _patient_id(patient: payer_claim_pb2.Patient) -> str:
-    return f"{patient.first_name.lower()}_{patient.last_name.lower()}_{patient.dob.lower()}"
-
-
-def _check_has_outstanding_balance(
-    claim: billing_service_pb2.GetPatientClaimsResponse.PatientClaimRow,
-) -> bool:
-    # Only claims with REMITTENCE_RECEIVED status have balance information (otherwise it's fully paid, or not yet received)
-    if claim.status != billing_service_pb2.GetPatientClaimsResponse.REMITTENCE_RECEIVED:
-        return False
-
-    # Check if there's any outstanding balance
-    return (
-        _currency_value_to_float(claim.balance.outstanding_copay) > 0
-        or _currency_value_to_float(claim.balance.outstanding_coinsurance) > 0
-        or _currency_value_to_float(claim.balance.outstanding_deductible) > 0
-    )
