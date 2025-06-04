@@ -1,8 +1,7 @@
 import grpc
-from typing import List, Sequence, Tuple, Optional, Union
+from typing import Sequence, Union
 
-# ─────────────────────────── generated stubs ────────────────────────── #
-from generated import (
+from src.generated import (
     billing_service_pb2 as bs_pb2,
     billing_service_pb2_grpc as bs_pb2_grpc,
     payer_claim_pb2 as pc_pb2,
@@ -14,6 +13,10 @@ SERVER_ADDR = "localhost:9090"
 
 
 class BillingClient:
+    """
+    Helper for calling the BillingService gRPC API.
+    """
+
     def __init__(self, target: str = SERVER_ADDR):
         self.target = target
         self.channel = grpc.insecure_channel(target)
@@ -31,17 +34,15 @@ class BillingClient:
 
     def ar_by_payer(
         self,
-        buckets: Sequence[Tuple[Optional[int], Optional[int]]],
+        buckets: Sequence[tuple[int, int]],
         payer_ids: Sequence[int] | None = None,
     ) -> Union[bs_pb2.GetPayerAccountsReceivableResponse, grpc.RpcError]:
         try:
             req = bs_pb2.GetPayerAccountsReceivableRequest()
             for start, end in buckets:
-                b = req.bucket.add()
-                if start is not None:
-                    b.start_seconds_ago = start
-                if end is not None:
-                    b.end_seconds_ago = end
+                bucket = req.bucket.add()
+                bucket.start_seconds_ago = start
+                bucket.end_seconds_ago = end
             if payer_ids:
                 req.payer_filter.extend(payer_ids)
             return self.stub.getPayerAccountsReceivable(req, timeout=3)

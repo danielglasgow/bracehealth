@@ -1,6 +1,6 @@
 import pytest
-from generated import payer_claim_pb2
-from claim_util import json_to_claim
+from src.generated import payer_claim_pb2
+from src.claim_util import json_to_claim
 
 
 def _valid_json() -> dict:

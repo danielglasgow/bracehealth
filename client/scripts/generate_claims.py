@@ -16,10 +16,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import argparse
 import json
 from pathlib import Path
-from claim_util import generate_random_claim
+from src.claim_util import generate_random_claim
 
 
-# ───────────── CLI entrypoint ───────────── #
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate N random PayerClaim records to a JSON-lines file"

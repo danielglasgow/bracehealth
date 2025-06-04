@@ -4,6 +4,8 @@
 
 1. Create a virtual environment:
 
+IMPORTANT: Must use Python 3.11
+
 ```bash
 python -m venv .venv --prompt bracehealth
 ```
@@ -49,7 +51,7 @@ pip freeze > requirements.txt
 ## Test
 
 ```
-pytest test_claim_util.py -v
+pytest src/test_claim_util.py -v
 ```
 
 ## Generate
@@ -61,23 +63,5 @@ python scripts/generate_claims.py 200  claims.txt
 ## Run
 
 ```
-python submit_claims.py claims.txt --rate 1
-```
-
-## Monitor
-
-```
- python poll_billing_service.py --interval 5
-```
-
-## Pay
-
-```
-python submit_patient_payment.py <Claim> <Payment>
-```
-
-## Debug
-
-```
- python submit_to_clearinghouse.py claims.txt --rate 1
+python main.py
 ```

@@ -1,24 +1,22 @@
 import datetime
 from pathlib import Path
-import signal
 import queue
 import time
 import grpc
-from dashboard import (
+from src.dashboard import (
     render_dashboard,
     DashboardState,
     SLOW_BUCKETS,
     FAST_BUCKETS,
     LIGHTNING_BUCKETS,
 )
-from billing_client import BillingClient
-from task import BackgroundTask
-from claim_util import generate_random_claim, json_to_claim
+from src.billing_client import BillingClient
+from src.task import BackgroundTask
+from src.claim_util import generate_random_claim, json_to_claim
 import json
 import sys
-import traceback
 
-from generated import billing_service_pb2, payer_claim_pb2
+from src.generated import billing_service_pb2, payer_claim_pb2
 
 from typing import Literal, Optional, TextIO, Union
 
@@ -261,19 +259,3 @@ class App:
                 print("Ctrl+C to return to main menu")
             time.sleep(0.1)  # Repaint every 100ms
         self.refresh_dashboard_task.request_stop()
-
-
-def main():
-    app = App()
-    signal.signal(signal.SIGINT, app.on_signal)
-    try:
-        app.start()
-    except Exception as e:
-        print("Error occurred:")
-        traceback.print_exc()
-        app.shutdown()
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

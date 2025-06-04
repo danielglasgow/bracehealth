@@ -2,14 +2,13 @@ import threading
 import time
 from typing import Any, Callable, Optional
 
-"""
-A simple background task that runs a function in a separate thread.
-
-It will call the function at the specified rate, and stop when the stop event is set.
-"""
-
 
 class BackgroundTask:
+    """
+    A simple background task that runs a function in a separate thread.
+
+    It will call the function at the specified rate, and stop when the stop event is set.
+    """
 
     def __init__(self, work_fn: Callable):
         self.work_fn = work_fn

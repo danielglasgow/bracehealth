@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 PROTO_DIR = Path(__file__).resolve().parent / ".." / ".." / "shared" / "proto"
-OUT_DIR = Path(__file__).resolve().parent / ".." / "generated"
+OUT_DIR = Path(__file__).resolve().parent / ".." / "src" / "generated"
 
 
 def _compile_all_protos() -> None:

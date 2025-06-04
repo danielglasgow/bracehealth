@@ -3,7 +3,7 @@ from datetime import datetime
 import grpc
 from pydantic import BaseModel
 
-from generated import billing_service_pb2, common_pb2
+from src.generated import billing_service_pb2, common_pb2
 
 
 CURRENCY_FMT = "${:,.2f}"  # show dollar amounts with cents and commas

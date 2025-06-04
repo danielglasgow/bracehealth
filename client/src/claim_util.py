@@ -1,5 +1,5 @@
 import random
-from generated import payer_claim_pb2, common_pb2
+from src.generated import payer_claim_pb2, common_pb2
 from datetime import date, timedelta, datetime
 import string
 
@@ -28,8 +28,6 @@ def json_to_claim(j: dict) -> payer_claim_pb2.PayerClaim:
         return common_pb2.CurrencyValue(
             decimal_amount=int(round(total * 100)), whole_amount=int(total)
         )
-
-    gender_map = {"m": payer_claim_pb2.Gender.M, "f": payer_claim_pb2.Gender.F}
 
     insurance = payer_claim_pb2.Insurance(
         payer_id=payer_claim_pb2.PayerId.Value(j["insurance"]["payer_id"].upper()),
