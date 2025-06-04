@@ -182,16 +182,18 @@ class App:
         try:
             claim = self.submit_queue.get(timeout=0.2)
         except queue.Empty:
-            return False
+            return False  # Keep running
         self.submit_message_queue.put(f"Submitting claim {claim.claim_id}")
         resp = self.client.submit_claim(claim)
         self.submit_message_queue.put(f"Response: {resp}")
         self.submit_claim_responses[claim.claim_id] = resp
         self.submit_queue.task_done()
-        return False
+        return False  # Keep running
 
     def _read_claims_from_file(self, file_handle: TextIO):
         line = file_handle.readline()
+        if not line:
+            return True  # Stop
         claim = json_to_claim(json.loads(line))
         self.submit_message_queue.put(f"Read claim from file: {claim.claim_id}")
         self.submit_queue.put(claim)

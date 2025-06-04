@@ -27,7 +27,9 @@ class BackgroundTask:
     def run(self, on_stop: Callable[[], None] | None = None, fn_args: list[Any] = []):
         try:
             while not self.stop.is_set():
-                self.work_fn(*fn_args)
+                should_stop = self.work_fn(*fn_args)
+                if should_stop:
+                    self.stop.set()
                 time.sleep(self.work_rate_seconds)
         finally:
             if on_stop:

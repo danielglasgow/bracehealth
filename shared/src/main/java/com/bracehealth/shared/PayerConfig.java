@@ -6,19 +6,14 @@ public record PayerConfig(PayerId payerId, int minResponseTimeSeconds, int maxRe
 
     private static final int MIN_RESPONSE_TIME_SECONDS = 1;
     private static final int MAX_RESPONSE_TIME_SECONDS = 60;
-    public static final ImmutableMap<PayerId, PayerConfig> PAYER_CONFIGS =
-            ImmutableMap.of(PayerId.MEDICARE,
-                    PayerConfig.builder().payerId(PayerId.MEDICARE)
-                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
-                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build(),
-                    PayerId.UNITED_HEALTH_GROUP,
-                    PayerConfig.builder().payerId(PayerId.UNITED_HEALTH_GROUP)
-                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
-                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build(),
-                    PayerId.ANTHEM,
-                    PayerConfig.builder().payerId(PayerId.ANTHEM)
-                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
-                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build());
+    public static final ImmutableMap<PayerId, PayerConfig> PAYER_CONFIGS = ImmutableMap.of(
+            PayerId.MEDICARE, PayerConfig.builder().payerId(PayerId.MEDICARE)
+                    .minResponseTimeSeconds(0).maxResponseTimeSeconds(30).build(),
+            PayerId.UNITED_HEALTH_GROUP,
+            PayerConfig.builder().payerId(PayerId.UNITED_HEALTH_GROUP).minResponseTimeSeconds(30)
+                    .maxResponseTimeSeconds(60).build(),
+            PayerId.ANTHEM, PayerConfig.builder().payerId(PayerId.ANTHEM).minResponseTimeSeconds(30)
+                    .maxResponseTimeSeconds(120).build());
 
 
     public static Builder builder() {
