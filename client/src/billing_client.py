@@ -70,10 +70,12 @@ class BillingClient:
             return e
 
     def pay_claim(
-        self, claim_id: str, amt: common_pb2.CurrencyValue
+        self, claim_id: str, amt: float
     ) -> Union[bs_pb2.SubmitPatientPaymentResponse, grpc.RpcError]:
         try:
-            req = bs_pb2.SubmitPatientPaymentRequest(claim_id=claim_id, amount=amt)
+            req = bs_pb2.SubmitPatientPaymentRequest(
+                claim_id=claim_id, amount=self._float_to_currency_value(amt)
+            )
             return self.stub.submitPatientPayment(req, timeout=5)
         except grpc.RpcError as e:
             return e
@@ -94,3 +96,13 @@ class BillingClient:
             return {id: patients[id] for id in sorted(set(ids))}
         except grpc.RpcError as e:
             return e
+
+    def _float_to_currency_value(self, amt: float) -> common_pb2.CurrencyValue:
+        # Split the amount into whole and decimal parts
+        whole_amount = int(amt)
+        decimal_amount = int(
+            round((amt - whole_amount) * 100)
+        )  # Convert decimal part to cents
+        return common_pb2.CurrencyValue(
+            whole_amount=whole_amount, decimal_amount=decimal_amount
+        )
