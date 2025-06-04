@@ -65,3 +65,35 @@ python scripts/generate_claims.py 200  claims.txt
 ```
 python main.py
 ```
+
+## Notes on setting up python 3.11
+
+# 0. Install pyenv
+
+brew install pyenv
+
+# 1. Install Python 3.11 with pyenv
+
+pyenv install 3.11.9
+
+# 2. Set it locally in your project directory
+
+pyenv local 3.11.9 # creates a .python-version file
+
+# 3. Verify pyenv shims are picking up the right Python
+
+which python # should be something like ~/.pyenv/shims/python
+python --version # should be 3.11.9
+
+# 4. Create a virtual environment using that Python
+
+python -m venv .venv --prompt bracehealth
+
+# 5. Activate the virtual environment
+
+source .venv/bin/activate
+
+# 6. Confirm everything is working
+
+which python # should be your_project/.venv/bin/python
+python --version # should be 3.11.9
