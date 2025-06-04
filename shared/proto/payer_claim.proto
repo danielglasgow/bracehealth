@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package com.bracehealth.shared;
+
+option java_multiple_files = true;
+option java_package = "com.bracehealth.shared";
+
+import "common.proto";
+
+message PayerClaim {
+  string claim_id = 1;
+  int32 place_of_service_code = 2;
+  Insurance insurance = 3;
+  Patient patient = 4;
+  Organization organization = 5;
+  RenderingProvider rendering_provider = 6;
+  repeated ServiceLine service_lines = 7;
+}
+
+message Address {
+  string street = 1;
+  string city = 2;
+  string state = 3;
+  string zip = 4;
+  string country = 5;
+}
+
+message Insurance {
+  PayerId payer_id = 1;
+  string patient_member_id = 2;
+}
+
+message Patient {
+  string first_name = 1;
+  string last_name = 2;
+  string email = 3;
+  Gender gender = 4;
+  string dob = 5; // YYYY-MM-DD (TODO: use structrued date)
+  Address address = 6;
+}
+
+message Contact {
+  string first_name = 1;
+  string last_name = 2;
+  string phone_number = 3;
+}
+
+message Organization {
+  string name = 1;
+  string billing_npi = 2;
+  string ein = 3;
+  Contact contact = 4;
+  Address address = 5;
+}
+
+message RenderingProvider {
+  string first_name = 1;
+  string last_name = 2;
+  string npi = 3;  // 10-digit NPI
+}
+
+message ServiceLine {
+  string service_line_id = 1;
+  string procedure_code = 2;
+  repeated string modifiers = 3;
+  string details = 5;
+  CurrencyValue charge = 6;
+  bool do_not_bill = 8;
+}
+
+enum PayerId {
+  PAYER_ID_UNSPECIFIED = 0;
+  MEDICARE = 1;
+  UNITED_HEALTH_GROUP = 2;
+  ANTHEM = 3;
+}
+
+enum Gender {
+  GENDER_UNSPECIFIED = 0;
+  M = 1;
+  F = 2;
+} 

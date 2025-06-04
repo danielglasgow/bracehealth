@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package com.bracehealth.shared;
+
+option java_multiple_files = true;
+option java_package = "com.bracehealth.shared";
+
+message PatientBalance {
+  CurrencyValue outstanding_copay = 2;
+  CurrencyValue outstanding_coinsurance = 3;
+  CurrencyValue outstanding_deductible = 4;
+}
+  
+message CurrencyValue {
+  int32 decimal_amount = 1; // Two places of precision
+  int32 whole_amount = 2;
+}
+ 

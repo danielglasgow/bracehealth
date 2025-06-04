@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package com.bracehealth.shared;
+
+option java_multiple_files = true;
+option java_package = "com.bracehealth.shared";
+
+import "common.proto";
+import "payer_claim.proto";
+import "remittance.proto";
+
+/**
+  * The billing service is responsible for keeping track of the claims, the patients outstanding balance, and the remittance.
+  * It also interfaces with the clearinghouse for claim adjudication.
+  * In it's fully "mature" form, it ensures claims are properly adjudicated to minimize billing overhead,
+  * and ensure patients are billed correclty, and practices are paid ontime.
+  *
+  * It provides methods for querying accounts receivable, claims, and otherwise keeping track of a claim throughout it's lifecycle. 
+  **/
+service BillingService {
+  /** 
+    * Submits a claim to the billing service. 
+    * The billing service will submit the claim to the clearinghouse for adjudication,
+    * and keep track of the claim, the patients outstanding balance, and the remittance. 
+    */
+  rpc submitClaim(SubmitClaimRequest) returns (SubmitClaimResponse);
+
+  /** "Callback" from clearinghouse to submit a remittance */
+  rpc notifyRemittance(NotifyRemittanceRequest) returns (NotifyRemittanceResponse);
+
+  /** Submits a patient payment to the billing service. This will update the patient's outstanding balance for a given claim. */
+  rpc submitPatientPayment(SubmitPatientPaymentRequest) returns (SubmitPatientPaymentResponse);
+
+  /** Gets the accounts receivable for a given payer (i.e insurance company) */
+  rpc getPayerAccountsReceivable(GetPayerAccountsReceivableRequest) returns (GetPayerAccountsReceivableResponse);
+
+  /** Gets the accounts receivable for a given patient (i.e patient's outstanding balance) */
+  rpc getPatientAccountsReceivable(GetPatientAccountsReceivableRequest) returns (GetPatientAccountsReceivableResponse);
+
+  /** Gets the submitted claims for a given patient */
+  rpc getPatientClaims(GetPatientClaimsRequest) returns (GetPatientClaimsResponse);
+}
+
+
+////////////////// submitClaim ////////////////////////////////////////
+
+message SubmitClaimRequest {
+  PayerClaim claim = 1;
+  int64 send_time_seconds = 2;
+}
+
+message SubmitClaimResponse {
+  enum SubmitClaimResult {
+    SUBMIT_CLAIM_RESULT_UNSPECIFIED = 0;
+    SUBMIT_CLAIM_RESULT_SUCCESS = 1;
+    SUBMIT_CLAIM_RESULT_FAILURE = 2;
+    SUBMIT_CLAIM_RESULT_ALREADY_SUBMITTED = 3;
+    SUBMIT_CLAIM_RESULT_PATIENT_WITH_SAME_ID_ALREADY_EXISTS = 4;
+  }
+  SubmitClaimResult result = 1;
+}
+
+
+////////////////// notifyRemittance //////////////////////////////////////
+
+message NotifyRemittanceRequest {
+  Remittance remittance = 1;
+  int64 send_time_seconds = 2;
+}
+
+message NotifyRemittanceResponse {
+  enum NotifyRemittanceResult {
+    NOTIFY_REMITTANCE_RESULT_UNSPECIFIED = 0;
+    NOTIFY_REMITTANCE_RESULT_SUCCESS = 1;
+    NOTIFY_REMITTANCE_RESULT_FAILURE = 2;
+  }
+  NotifyRemittanceResult result = 1;
+}
+
+
+////////////////// submitPatientPayment //////////////////////////////////////
+
+message SubmitPatientPaymentRequest {
+  string claim_id = 1;
+  CurrencyValue amount = 2;
+}
+
+message SubmitPatientPaymentResponse {
+  enum SubmitPatientPaymentResult {
+    SUBMIT_PATIENT_PAYMENT_RESULT_UNSPECIFIED = 0;
+    SUBMIT_PATIENT_PAYMENT_RESULT_ERROR = 1;
+    SUBMIT_PATIENT_PAYMENT_NO_OUTSTANDING_BALANCE = 2;
+    SUBMIT_PATIENT_PAYMENT_AMOUNT_EXCEEDS_OUTSTANDING_BALANCE = 3;
+    SUBMIT_PATIENT_PAYMENT_RESULT_FULLY_PAID = 4;
+    SUBMIT_PATIENT_PAYMENT_RESULT_PAYMENT_APPLIED_BALANCING_OUTSTANDING = 5;
+  }
+  SubmitPatientPaymentResult result = 1;
+}
+
+
+////////////////// getPayerAccountsReceivable //////////////////////////////////////
+
+message GetPayerAccountsReceivableRequest {
+ repeated AccountsReceivableBucket bucket = 1;
+  // If not specified, all payers are included, otherwise, each payer gets row
+  repeated PayerId payer_filter = 2;
+}
+
+message GetPayerAccountsReceivableResponse {
+  message AccountsReceivableBucketValue {
+    AccountsReceivableBucket bucket = 1;
+    CurrencyValue amount = 2;
+  }
+  message AccountsReceivableRow {
+    string payer_id = 1;
+    string payer_name = 2;
+    repeated AccountsReceivableBucketValue bucket_value = 3;
+  }
+  repeated AccountsReceivableRow row = 1;
+}
+
+message AccountsReceivableBucket {
+  int32 start_seconds_ago = 1; // If not specified, looks back forever from end_seconds_ago
+  int32 end_seconds_ago = 2; // If not specified, assumed to be 0
+}
+
+
+////////////////// getPatientAccountsReceivable //////////////////////////////////////
+
+message GetPatientAccountsReceivableRequest {
+  // If not specified, all patients are included, otherwise, only the patients in this list are included
+  // For now patient is identified by "firstname_lastname_dob"
+  repeated string patient_filter = 1;
+}
+
+message GetPatientAccountsReceivableResponse {
+  message PatientAccountsReceivableRow {
+    Patient patient = 1;
+    repeated string claim_id = 2;
+    PatientBalance balance = 3;
+  }
+  repeated PatientAccountsReceivableRow row = 1;
+}
+
+
+////////////////// getPatientClaims //////////////////////////////////////
+
+message GetPatientClaimsRequest {
+  string patient_filter = 1;
+}
+
+ message GetPatientClaimsResponse {
+  enum ClaimStatus {
+    CLAIM_STATUS_UNSPECIFIED = 0;
+    SUBMITTED_TO_PAYER = 1;
+    REMITTENCE_RECEIVED = 2;
+    FULLY_PAID = 3;
+  }
+  enum GetPatientClaimError {
+    GET_PATIENT_CLAIM_ERROR_UNSPECIFIED = 0;
+    GET_PATIENT_CLAIM_ERROR_PATIENT_NOT_FOUND = 1;
+    GET_PATIENT_CLAIM_ERROR_NO_PATIENT_FILTER_SPECIFIED = 2;
+    GET_PATIENT_CLAIM_ERROR_INVALID_PATIENT_ID = 3;
+  }
+  message PatientClaimRow {
+    Patient patient = 1;
+    string claim_id = 2;
+    PatientBalance balance = 3; // Will be unset if status != REMITTENCE_RECEIVED 
+    ClaimStatus status = 4;
+  }
+  repeated PatientClaimRow row = 1;
+  GetPatientClaimError error = 2;
+ }
+
