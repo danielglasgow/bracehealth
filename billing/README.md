@@ -34,7 +34,6 @@ mvn test -Dtest=<TargetClass>
 e.g
 
 ```
-mvn test -Dtest=ClaimStoreTest
 mvn test -Dtest=BillingServiceTest
 ```
 

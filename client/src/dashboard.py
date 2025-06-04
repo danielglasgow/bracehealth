@@ -114,6 +114,8 @@ def _render_patient_table(
     rows = []
     for row in resp.row:
         claim_ids = [id for id in row.claim_id]
+        if len(claim_ids) == 0:
+            continue
         if len(claim_ids) > 3:
             claim_ids = claim_ids[:3] + ["..."]
         balance = row.balance
