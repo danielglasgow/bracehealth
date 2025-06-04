@@ -83,7 +83,7 @@ class App:
         print(" 3  Generate random claims")
         print(" 4  Stop generating random claims")
         print(" 5  View claim submissions")
-        print(" 6  Launch Dashboard")
+        print(" 6  View Dashboard")
         print(" 0  Quit")
         print()
 

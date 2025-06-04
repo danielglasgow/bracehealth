@@ -1,6 +1,25 @@
 package com.bracehealth.shared;
 
+import com.google.common.collect.ImmutableMap;
+
 public record PayerConfig(PayerId payerId, int minResponseTimeSeconds, int maxResponseTimeSeconds) {
+
+    private static final int MIN_RESPONSE_TIME_SECONDS = 1;
+    private static final int MAX_RESPONSE_TIME_SECONDS = 60;
+    public static final ImmutableMap<PayerId, PayerConfig> PAYER_CONFIGS =
+            ImmutableMap.of(PayerId.MEDICARE,
+                    PayerConfig.builder().payerId(PayerId.MEDICARE)
+                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
+                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build(),
+                    PayerId.UNITED_HEALTH_GROUP,
+                    PayerConfig.builder().payerId(PayerId.UNITED_HEALTH_GROUP)
+                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
+                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build(),
+                    PayerId.ANTHEM,
+                    PayerConfig.builder().payerId(PayerId.ANTHEM)
+                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
+                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build());
+
 
     public static Builder builder() {
         return new Builder();

@@ -12,12 +12,11 @@ import com.bracehealth.shared.NotifyRemittanceResponse;
 import com.bracehealth.shared.NotifyRemittanceResponse.NotifyRemittanceResult;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerConfig;
-import com.bracehealth.shared.PayerId;
 import com.bracehealth.shared.ProcessClaimRequest;
 import com.bracehealth.shared.ProcessClaimResponse;
 import com.bracehealth.shared.Remittance;
 import com.bracehealth.shared.RemittanceUtil;
-import com.google.common.collect.ImmutableMap;
+import static com.bracehealth.shared.PayerConfig.PAYER_CONFIGS;
 
 
 /**
@@ -30,22 +29,7 @@ import com.google.common.collect.ImmutableMap;
  * The callback will be a loopback call to the billing service.
  */
 class InMemoryClearingHouseClient implements ClearingHouseClient {
-    private static final int MIN_RESPONSE_TIME_SECONDS = 1;
-    private static final int MAX_RESPONSE_TIME_SECONDS = 60;
     private static final Logger logger = LoggerFactory.getLogger(InMemoryClearingHouseClient.class);
-    private static final ImmutableMap<PayerId, PayerConfig> PAYER_CONFIGS =
-            ImmutableMap.of(PayerId.MEDICARE,
-                    PayerConfig.builder().payerId(PayerId.MEDICARE)
-                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
-                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build(),
-                    PayerId.UNITED_HEALTH_GROUP,
-                    PayerConfig.builder().payerId(PayerId.UNITED_HEALTH_GROUP)
-                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
-                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build(),
-                    PayerId.ANTHEM,
-                    PayerConfig.builder().payerId(PayerId.ANTHEM)
-                            .minResponseTimeSeconds(MIN_RESPONSE_TIME_SECONDS)
-                            .maxResponseTimeSeconds(MAX_RESPONSE_TIME_SECONDS).build());
 
 
     private final ScheduledExecutorService scheduler =

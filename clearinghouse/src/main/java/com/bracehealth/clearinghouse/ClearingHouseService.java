@@ -1,6 +1,5 @@
 package com.bracehealth.clearinghouse;
 
-import com.google.common.collect.ImmutableMap;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.slf4j.Logger;
@@ -13,7 +12,6 @@ import net.devh.boot.grpc.client.inject.GrpcClient;
 import com.bracehealth.shared.ClearingHouseServiceGrpc;
 import com.bracehealth.shared.ProcessClaimRequest;
 import com.bracehealth.shared.ProcessClaimResponse;
-import com.bracehealth.shared.PayerId;
 import com.bracehealth.shared.BillingServiceGrpc;
 import com.bracehealth.shared.PayerClaim;
 import com.bracehealth.shared.PayerConfig;
@@ -22,6 +20,7 @@ import com.bracehealth.shared.Remittance;
 import com.bracehealth.shared.NotifyRemittanceResponse;
 import com.bracehealth.shared.NotifyRemittanceResponse.NotifyRemittanceResult;
 import com.bracehealth.shared.RemittanceUtil;
+import static com.bracehealth.shared.PayerConfig.PAYER_CONFIGS;
 
 @GrpcService
 public class ClearingHouseService extends ClearingHouseServiceGrpc.ClearingHouseServiceImplBase {
@@ -33,22 +32,13 @@ public class ClearingHouseService extends ClearingHouseServiceGrpc.ClearingHouse
     @GrpcClient("billing-service")
     private BillingServiceGrpc.BillingServiceBlockingStub billingService;
 
-    private final ImmutableMap<PayerId, PayerConfig> payerConfigs = ImmutableMap.of(
-            PayerId.MEDICARE, PayerConfig.builder().payerId(PayerId.MEDICARE)
-                    .minResponseTimeSeconds(1).maxResponseTimeSeconds(10).build(),
-            PayerId.UNITED_HEALTH_GROUP,
-            PayerConfig.builder().payerId(PayerId.UNITED_HEALTH_GROUP).minResponseTimeSeconds(1)
-                    .maxResponseTimeSeconds(10).build(),
-            PayerId.ANTHEM, PayerConfig.builder().payerId(PayerId.ANTHEM).minResponseTimeSeconds(1)
-                    .maxResponseTimeSeconds(10).build());
-
     @Override
     public void processClaim(ProcessClaimRequest request,
             StreamObserver<ProcessClaimResponse> responseObserver) {
         PayerClaim claim = request.getClaim();
         logger.info("Received claim submission for claim ID: {} to payer: {}", claim.getClaimId(),
                 claim.getInsurance().getPayerId());
-        PayerConfig payerConfig = payerConfigs.get(claim.getInsurance().getPayerId());
+        PayerConfig payerConfig = PAYER_CONFIGS.get(claim.getInsurance().getPayerId());
         if (payerConfig == null) {
             logger.error("Payer {} not supported", claim.getInsurance().getPayerId());
             ProcessClaimResponse response =

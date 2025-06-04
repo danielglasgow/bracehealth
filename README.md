@@ -1,5 +1,13 @@
 # Steps to run simulation
 
+## Note on Maven
+
+I've noticed sometimes I need to run `mvn clean install` twice, because the first time errors out. I beleive this is due to some race condition in proto-gen. I haven't taken the time to debug. If `mvn clean install` fails, give it a couple runs if you see an error like:
+
+```
+[ERROR] /Users/danielglasgow/src/bracehealth/shared/target/generated-sources/protobuf/java/com/bracehealth/shared/PayerClaimOuterClass.java: error reading /Users/danielglasgow/src/bracehealth/shared/target/generated-sources/protobuf/java/com/bracehealth/shared/PayerClaimOuterClass.java; /Users/danielglasgow/src/bracehealth/shared/target/generated-sources/protobuf/java/com/bracehealth/shared/PayerClaimOuterClass.java
+```
+
 ## First time setup
 
 ```
@@ -40,7 +48,7 @@ mvn spring-boot:run
 
 ### Run client
 
-(in another terminal)
+(In another terminal)
 
 (Also see client/README.md)
 
